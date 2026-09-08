@@ -1,8 +1,7 @@
 ```
 # Environment variables
 .env*
-!frontend_references.go
 
-# Security keys
-andy-key
+# SSH keys and similar sensitive files
+*key*
 ```
