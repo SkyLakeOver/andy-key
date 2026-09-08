@@ -10,7 +10,7 @@ import (
 	"os"
 )
 
-const KEY_PATH = ".sshkage.key" // ИЗМЕНЕНО: .master.key → .sshkage.key
+const KEY_PATH = ".andy-key.key" // ИЗМЕНЕНО: .master.key → .andy-key.key
 
 type Crypto struct {
 	key []byte

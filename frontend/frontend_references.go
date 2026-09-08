@@ -1004,23 +1004,38 @@ function saveWorkstationRow(id, button) {
 	var row = button.closest('tr');
 	var inputs = row.querySelectorAll('input, select');
 	
+	// Индексы элементов формы:
+	// [0] - select адреса
+	// [1] - select сотрудника
+	// [2] - input инвентарного номера
+	// [3] - input серийного номера
+	// [4] - input пломб
+	// [5] - select количества мониторов
+	// [6] - checkbox вакантности
+	// [7] - input даты замены
+	// [8] - input буквы замены
+	
 	var sealArray = [];
 	var sealInput = inputs[4].value.trim();
 	if (sealInput) {
 		sealArray = sealInput.split(',').map(s => s.trim()).filter(s => s);
 	}
 
+	var isVacant = inputs[6].checked;
+	var replacementDate = inputs[7].value || null;
+	var replacementLetter = inputs[8].value.trim() || null;
+
 	var data = {
 		address_id: parseInt(inputs[0].value),
-		employee_id: inputs[6].checked ? null : (parseInt(inputs[1].value) || null),
+		employee_id: isVacant ? null : (parseInt(inputs[1].value) || null),
 		inventory_number: inputs[2].value.trim(),
 		serial_number: inputs[3].value.trim(),
 		seal_numbers: JSON.stringify(sealArray),
 		monitor_count: parseInt(inputs[5].value),
-		is_vacant: inputs[6].checked,
-		replacement_done: !!inputs[7].value,
-		replacement_date: inputs[7].value || null,
-		replacement_letter: inputs[8].value.trim() || null
+		is_vacant: isVacant,
+		replacement_done: replacementDate !== null,
+		replacement_date: replacementDate,
+		replacement_letter: replacementLetter
 	};
 
 	if (!data.inventory_number) {
@@ -1065,6 +1080,319 @@ function cancelWorkstationEdit(id, button) {
 			// ИСПРАВЛЕНО: обновляем ТОЛЬКО контейнер таблицы
 			// Пагинация обновится через вызов изнутри renderWorkstationsTable()
 			renderWorkstationsTable();
+		});
+}
+
+// ==================== ФУНКЦИИ РЕДАКТИРОВАНИЯ ДЛЯ ХОСТОВ ====================
+function editHostRow(id, button) {
+	var row = button.closest('tr');
+	var cells = row.querySelectorAll('td');
+	var host = hosts.find(h => h.id == id);
+	if (!host) return;
+
+	cells[0].innerHTML = '<select class="form-control">' +
+		addresses.map(a => '<option value="' + a.id + '"' + (a.id == host.address_id ? ' selected' : '') + '>' + escapeHtml(a.full_address) + '</option>').join('') +
+		'</select>';
+
+	cells[1].innerHTML = '<select class="form-control">' +
+		'<option value="0">-- Не назначен --</option>' +
+		employees.map(e => '<option value="' + e.id + '"' + (e.id == host.employee_id ? ' selected' : '') + '>' + escapeHtml(e.short_name || e.full_name) + '</option>').join('') +
+		'</select>';
+
+	cells[2].innerHTML = '<input type="text" class="form-control" value="' + escapeHtml(host.ip) + '">';
+	cells[3].innerHTML = '<input type="number" class="form-control" value="' + host.ssh_port + '" min="1" max="65535">';
+
+	var isEnabled = host.enabled === '1' || host.enabled === 1 || host.enabled === true;
+	cells[4].innerHTML = '<div style="display:flex;align-items:center;gap:8px;">' +
+		'<input type="checkbox" id="host-edit-enabled-' + id + '" ' + (isEnabled ? 'checked' : '') + ' style="margin:0;width:auto;">' +
+		'<label for="host-edit-enabled-' + id + '" style="margin:0;font-size:0.9rem;font-weight:500;color:#555;">Включён</label>' +
+		'</div>';
+
+	cells[5].innerHTML = 
+		'<button class="btn btn-sm btn-success" onclick="saveHostRow(' + id + ', this)">💾 Сохранить</button> ' +
+		'<button class="btn btn-sm btn-secondary" onclick="cancelHostEdit(' + id + ', this)">❌ Отмена</button>';
+}
+
+function saveHostRow(id, button) {
+	var row = button.closest('tr');
+	var inputs = row.querySelectorAll('input, select');
+
+	var data = {
+		address_id: parseInt(inputs[0].value),
+		employee_id: parseInt(inputs[1].value) || null,
+		ip: inputs[2].value.trim(),
+		ssh_port: parseInt(inputs[3].value),
+		enabled: inputs[4].querySelector('input[type="checkbox"]').checked
+	};
+
+	if (!data.address_id) {
+		showAlert(hostAlert, 'Адрес обязателен для заполнения', 'danger');
+		return;
+	}
+	if (!data.ip) {
+		showAlert(hostAlert, 'IP адрес обязателен для заполнения', 'danger');
+		return;
+	}
+
+	fetch('/api/reference/hosts/' + id, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(data)
+	})
+	.then(response => response.json())
+	.then(result => {
+		fetch('/api/reference/hosts')
+			.then(r => r.json())
+			.then(data => {
+				hosts = data;
+				renderHostsTable();
+				showAlert(null, 'Хост успешно обновлён!', 'success', true);
+			});
+	})
+	.catch(error => {
+		showAlert(hostAlert, error.message || 'Ошибка сети', 'danger');
+	});
+}
+
+function cancelHostEdit(id, button) {
+	fetch('/api/reference/hosts')
+		.then(r => r.json())
+		.then(data => {
+			hosts = data;
+			renderHostsTable();
+		});
+}
+
+// ==================== ФУНКЦИИ РЕДАКТИРОВАНИЯ ДЛЯ СЕТЕВОГО ОБОРУДОВАНИЯ ====================
+function editNetworkEquipmentRow(id, button) {
+	var row = button.closest('tr');
+	var cells = row.querySelectorAll('td');
+	var eq = networkEquipment.find(e => e.id == id);
+	if (!eq) return;
+
+	cells[0].innerHTML = '<select class="form-control">' +
+		addresses.map(a => '<option value="' + a.id + '"' + (a.id == eq.address_id ? ' selected' : '') + '>' + escapeHtml(a.full_address) + '</option>').join('') +
+		'</select>';
+
+	cells[1].innerHTML = '<input type="text" class="form-control" value="' + escapeHtml(eq.category) + '">';
+	cells[2].innerHTML = '<input type="text" class="form-control" value="' + escapeHtml(eq.type) + '">';
+	cells[3].innerHTML = '<input type="text" class="form-control" value="' + escapeHtml(eq.model) + '">';
+	cells[4].innerHTML = '<input type="number" class="form-control" value="' + eq.port_count + '" min="1">';
+
+	cells[5].innerHTML = 
+		'<button class="btn btn-sm btn-success" onclick="saveNetworkEquipmentRow(' + id + ', this)">💾 Сохранить</button> ' +
+		'<button class="btn btn-sm btn-secondary" onclick="cancelNetworkEquipmentEdit(' + id + ', this)">❌ Отмена</button>';
+}
+
+function saveNetworkEquipmentRow(id, button) {
+	var row = button.closest('tr');
+	var inputs = row.querySelectorAll('input, select');
+
+	var data = {
+		address_id: parseInt(inputs[0].value),
+		category: inputs[1].value.trim(),
+		type: inputs[2].value.trim(),
+		model: inputs[3].value.trim(),
+		port_count: parseInt(inputs[4].value)
+	};
+
+	if (!data.address_id) {
+		showAlert(networkEquipmentAlert, 'Адрес обязателен для заполнения', 'danger');
+		return;
+	}
+	if (!data.category) {
+		showAlert(networkEquipmentAlert, 'Категория обязательна для заполнения', 'danger');
+		return;
+	}
+	if (!data.type) {
+		showAlert(networkEquipmentAlert, 'Тип обязателен для заполнения', 'danger');
+		return;
+	}
+	if (!data.model) {
+		showAlert(networkEquipmentAlert, 'Модель обязательна для заполнения', 'danger');
+		return;
+	}
+	if (!data.port_count || data.port_count <= 0) {
+		showAlert(networkEquipmentAlert, 'Число портов должно быть больше 0', 'danger');
+		return;
+	}
+
+	fetch('/api/reference/network-equipment/' + id, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(data)
+	})
+	.then(response => response.json())
+	.then(result => {
+		fetch('/api/reference/network-equipment')
+			.then(r => r.json())
+			.then(data => {
+				networkEquipment = data;
+				renderNetworkEquipmentTable();
+				showAlert(null, 'Оборудование успешно обновлено!', 'success', true);
+			});
+	})
+	.catch(error => {
+		showAlert(networkEquipmentAlert, error.message || 'Ошибка сети', 'danger');
+	});
+}
+
+function cancelNetworkEquipmentEdit(id, button) {
+	fetch('/api/reference/network-equipment')
+		.then(r => r.json())
+		.then(data => {
+			networkEquipment = data;
+			renderNetworkEquipmentTable();
+		});
+}
+
+// ==================== ФУНКЦИИ РЕДАКТИРОВАНИЯ ДЛЯ МФУ ====================
+function editNetworkMFPRow(id, button) {
+	var row = button.closest('tr');
+	var cells = row.querySelectorAll('td');
+	var mfp = networkMFPs.find(m => m.id == id);
+	if (!mfp) return;
+
+	cells[0].innerHTML = '<select class="form-control">' +
+		addresses.map(a => '<option value="' + a.id + '"' + (a.id == mfp.address_id ? ' selected' : '') + '>' + escapeHtml(a.full_address) + '</option>').join('') +
+		'</select>';
+
+	cells[1].innerHTML = '<input type="text" class="form-control" value="' + escapeHtml(mfp.model) + '">';
+	cells[2].innerHTML = '<input type="text" class="form-control" value="' + escapeHtml(mfp.ip) + '">';
+	cells[3].innerHTML = '<input type="text" class="form-control" value="' + escapeHtml(mfp.hostname || '') + '">';
+	cells[4].innerHTML = '<input type="text" class="form-control" value="' + escapeHtml(mfp.serial_number) + '">';
+
+	cells[5].innerHTML = 
+		'<button class="btn btn-sm btn-success" onclick="saveNetworkMFPRow(' + id + ', this)">💾 Сохранить</button> ' +
+		'<button class="btn btn-sm btn-secondary" onclick="cancelNetworkMFPEdit(' + id + ', this)">❌ Отмена</button>';
+}
+
+function saveNetworkMFPRow(id, button) {
+	var row = button.closest('tr');
+	var inputs = row.querySelectorAll('input, select');
+
+	var data = {
+		address_id: parseInt(inputs[0].value),
+		model: inputs[1].value.trim(),
+		ip: inputs[2].value.trim(),
+		hostname: inputs[3].value.trim() || null,
+		serial_number: inputs[4].value.trim()
+	};
+
+	if (!data.address_id) {
+		showAlert(networkMFPAlert, 'Адрес обязателен для заполнения', 'danger');
+		return;
+	}
+	if (!data.model) {
+		showAlert(networkMFPAlert, 'Модель обязательна для заполнения', 'danger');
+		return;
+	}
+	if (!data.ip) {
+		showAlert(networkMFPAlert, 'IP адрес обязателен для заполнения', 'danger');
+		return;
+	}
+	if (!data.serial_number) {
+		showAlert(networkMFPAlert, 'Серийный номер обязателен для заполнения', 'danger');
+		return;
+	}
+
+	fetch('/api/reference/network-mfps/' + id, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(data)
+	})
+	.then(response => response.json())
+	.then(result => {
+		fetch('/api/reference/network-mfps')
+			.then(r => r.json())
+			.then(data => {
+				networkMFPs = data;
+				renderNetworkMFPsTable();
+				showAlert(null, 'МФУ успешно обновлено!', 'success', true);
+			});
+	})
+	.catch(error => {
+		showAlert(networkMFPAlert, error.message || 'Ошибка сети', 'danger');
+	});
+}
+
+function cancelNetworkMFPEdit(id, button) {
+	fetch('/api/reference/network-mfps')
+		.then(r => r.json())
+		.then(data => {
+			networkMFPs = data;
+			renderNetworkMFPsTable();
+		});
+}
+
+// ==================== ФУНКЦИИ РЕДАКТИРОВАНИЯ ДЛЯ IP-ТЕЛЕФОНОВ ====================
+function editIPPhoneRow(id, button) {
+	var row = button.closest('tr');
+	var cells = row.querySelectorAll('td');
+	var phone = ipPhones.find(p => p.id == id);
+	if (!phone) return;
+
+	cells[0].innerHTML = '<select class="form-control">' +
+		addresses.map(a => '<option value="' + a.id + '"' + (a.id == phone.address_id ? ' selected' : '') + '>' + escapeHtml(a.full_address) + '</option>').join('') +
+		'</select>';
+
+	cells[1].innerHTML = '<input type="text" class="form-control" value="' + escapeHtml(phone.employee_full_name) + '">';
+	cells[2].innerHTML = '<input type="text" class="form-control" value="' + escapeHtml(phone.ip) + '">';
+
+	cells[3].innerHTML = 
+		'<button class="btn btn-sm btn-success" onclick="saveIPPhoneRow(' + id + ', this)">💾 Сохранить</button> ' +
+		'<button class="btn btn-sm btn-secondary" onclick="cancelIPPhoneEdit(' + id + ', this)">❌ Отмена</button>';
+}
+
+function saveIPPhoneRow(id, button) {
+	var row = button.closest('tr');
+	var inputs = row.querySelectorAll('input, select');
+
+	var data = {
+		address_id: parseInt(inputs[0].value),
+		employee_full_name: inputs[1].value.trim(),
+		ip: inputs[2].value.trim()
+	};
+
+	if (!data.address_id) {
+		showAlert(ipPhoneAlert, 'Адрес обязателен для заполнения', 'danger');
+		return;
+	}
+	if (!data.employee_full_name) {
+		showAlert(ipPhoneAlert, 'ФИО сотрудника обязательно для заполнения', 'danger');
+		return;
+	}
+	if (!data.ip) {
+		showAlert(ipPhoneAlert, 'IP адрес обязателен для заполнения', 'danger');
+		return;
+	}
+
+	fetch('/api/reference/ip-phones/' + id, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(data)
+	})
+	.then(response => response.json())
+	.then(result => {
+		fetch('/api/reference/ip-phones')
+			.then(r => r.json())
+			.then(data => {
+				ipPhones = data;
+				renderIPPhonesTable();
+				showAlert(null, 'IP телефон успешно обновлён!', 'success', true);
+			});
+	})
+	.catch(error => {
+		showAlert(ipPhoneAlert, error.message || 'Ошибка сети', 'danger');
+	});
+}
+
+function cancelIPPhoneEdit(id, button) {
+	fetch('/api/reference/ip-phones')
+		.then(r => r.json())
+		.then(data => {
+			ipPhones = data;
+			renderIPPhonesTable();
 		});
 }
 
