@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	DB_PATH                = "sshkage.db"
+	DB_PATH                = "andy-key.db"
 	LOGS_DIR               = "logs"
-	LOG_PREFIX             = "sshkage"
+	LOG_PREFIX             = "andy-key"
 	CURRENT_SCHEMA_VERSION = "0.0.4.1"
 )
 
@@ -413,7 +413,7 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	footerKey := "footer_text"
 	rows, _ := QueryDB("SELECT setting_value FROM platform_settings WHERE setting_key = '" + footerKey + "'")
 	if len(rows) == 0 {
-		footerPlaintext := "Powered by sshkage"
+		footerPlaintext := "Powered by andy-key"
 		crypto := GetCrypto()
 		if crypto != nil {
 			encrypted, err := crypto.Encrypt(footerPlaintext)
@@ -1137,7 +1137,7 @@ func InitDB() error {
 	
 	// Инициализация зашифрованного футера (теперь безопасно вызывать GetCrypto)
 	footerKey := "footer_text"
-	footerPlaintext := "Powered by sshkage"
+	footerPlaintext := "Powered by andy-key"
 	rows, _ := QueryDB("SELECT setting_value FROM platform_settings WHERE setting_key = '" + footerKey + "'")
 	if len(rows) == 0 {
 		encrypted, err := crypto.Encrypt(footerPlaintext)
@@ -1251,7 +1251,7 @@ func getLogEntries(logType string, limit int) ([]string, error) {
 
 // Вспомогательная функция: хеширование пароля с солью
 func hashPassword(password string) string {
-	salt := "sshkage"
+	salt := "andy-key"
 	hash := sha256.Sum256([]byte(password + salt))
 	return hex.EncodeToString(hash[:])
 }

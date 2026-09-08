@@ -20,16 +20,16 @@
 ```bash
 # Клонировать репозиторий
 git clone <repository-url>
-cd sshkage
+cd andy-key
 
 # Сборка
-env CGO_ENABLED=0 go build -o sshkage
+env CGO_ENABLED=0 go build -o andy-key
 
 # Запуск
-./sshkage 9000
+./andy-key 9000
 (или любой другой свободный порт)
 
-Вот инструкция для README.md о зависимостях и деплое проекта **sshkage**:
+Вот инструкция для README.md о зависимостях и деплое проекта **andy-key**:
 
 ```markdown
 ## Требования
@@ -79,46 +79,46 @@ brew install hudochenkov/sshpass/sshpass
 
 ### 1. Клонирование репозитория
 ```bash
-git clone https://github.com/yourusername/sshkage.git
-cd sshkage
+git clone https://github.com/yourusername/andy-key.git
+cd andy-key
 ```
 
 ### 2. Сборка проекта
 ```bash
-env CGO_ENABLED=0 go build -o sshkage
+env CGO_ENABLED=0 go build -o andy-key
 ```
 
 ### 3. Запуск приложения
 ```bash
 # Запуск с портом по умолчанию (9000)
-./sshkage
+./andy-key
 
 # Запуск с указанием порта
-./sshkage 8080
+./andy-key 8080
 
 # Запуск с указанием порта через переменную окружения
-PORT=8080 ./sshkage
+PORT=8080 ./andy-key
 ```
 
 ## Первоначальная настройка
 
 После первого запуска:
-1. **База данных** `sshkage.db` будет создана автоматически
-2. **Мастер-ключ** `.sshkage.key` будет сгенерирован автоматически
+1. **База данных** `andy-key.db` будет создана автоматически
+2. **Мастер-ключ** `.andy-key.key` будет сгенерирован автоматически
 3. **Папка логов** `logs/` будет создана автоматически
 4. **Администратор** по умолчанию: логин `admin`, пароль `admin` (обязательно смените!)
 
 ## Структура файлов
 
 ```
-sshkage/
-├── sshkage              # Бинарный файл приложения
-├── sshkage.db           # База данных SQLite
-├── .sshkage.key         # Мастер-ключ для шифрования (права 600)
+andy-key/
+├── andy-key              # Бинарный файл приложения
+├── andy-key.db           # База данных SQLite
+├── .andy-key.key         # Мастер-ключ для шифрования (права 600)
 ├── logs/                # Папка с логами
-│   ├── sshkage-YYYY-MM-DD-HH-MM-SS-panel.log
-│   ├── sshkage-YYYY-MM-DD-HH-MM-SS-remote.log
-│   └── sshkage-YYYY-MM-DD-HH-MM-SS-diagnostic.log
+│   ├── andy-key-YYYY-MM-DD-HH-MM-SS-panel.log
+│   ├── andy-key-YYYY-MM-DD-HH-MM-SS-remote.log
+│   └── andy-key-YYYY-MM-DD-HH-MM-SS-diagnostic.log
 └── frontend/            # Пакет с веб-интерфейсом
 ```
 
@@ -130,37 +130,37 @@ sshkage/
 ### 2. Защита мастер-ключа
 ```bash
 # Установка прав 600 на мастер-ключ
-chmod 600 .sshkage.key
+chmod 600 .andy-key.key
 ```
 
 ### 3. Бэкап базы данных
 ```bash
 # Регулярное резервное копирование
-cp sshkage.db sshkage.db.backup.$(date +%Y%m%d_%H%M%S)
+cp andy-key.db andy-key.db.backup.$(date +%Y%m%d_%H%M%S)
 ```
 
 ## Запуск в production
 
 ### 1. Системный сервис (systemd)
 
-Создайте файл `/etc/systemd/system/sshkage.service`:
+Создайте файл `/etc/systemd/system/andy-key.service`:
 
 ```ini
 [Unit]
-Description=sshkage - SSH Administration Platform
+Description=andy-key - SSH Administration Platform
 After=network.target
 
 [Service]
 Type=simple
-User=sshkage
-Group=sshkage
-WorkingDirectory=/opt/sshkage
-ExecStart=/opt/sshkage/sshkage 9000
+User=andy-key
+Group=andy-key
+WorkingDirectory=/opt/andy-key
+ExecStart=/opt/andy-key/andy-key 9000
 Restart=always
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=sshkage
+SyslogIdentifier=andy-key
 
 [Install]
 WantedBy=multi-user.target
@@ -170,9 +170,9 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable sshkage
-sudo systemctl start sshkage
-sudo systemctl status sshkage
+sudo systemctl enable andy-key
+sudo systemctl start andy-key
+sudo systemctl status andy-key
 ```
 
 ### 2. Настройка reverse proxy (Nginx)
@@ -203,20 +203,20 @@ sudo certbot --nginx -d your-domain.com
 
 ```bash
 # Остановка сервиса
-sudo systemctl stop sshkage
+sudo systemctl stop andy-key
 
 # Резервное копирование
-cp sshkage.db sshkage.db.backup.$(date +%Y%m%d_%H%M%S)
-cp .sshkage.key .sshkage.key.backup
+cp andy-key.db andy-key.db.backup.$(date +%Y%m%d_%H%M%S)
+cp .andy-key.key .andy-key.key.backup
 
 # Обновление кода
-git pull origin sshkage-0.0.4.2
+git pull origin andy-key-0.0.4.2
 
 # Пересборка
-env CGO_ENABLED=0 go build -o sshkage
+env CGO_ENABLED=0 go build -o andy-key
 
 # Запуск сервиса
-sudo systemctl start sshkage
+sudo systemctl start andy-key
 ```
 
 ## Устранение неполадок
@@ -237,13 +237,13 @@ sudo systemctl start sshkage
 lsof -i :9000
 
 # Или запустите на другом порту
-./sshkage 8080
+./andy-key 8080
 ```
 
-### Ошибка: "permission denied" на .sshkage.key
+### Ошибка: "permission denied" на .andy-key.key
 ```bash
 # Установите правильные права
-chmod 600 .sshkage.key
+chmod 600 .andy-key.key
 ```
 
 ## Лицензия
@@ -264,10 +264,10 @@ chmod 600 .sshkage.key
 sudo apt-get install sqlite3 sshpass
 
 # Сборка
-env CGO_ENABLED=0 go build -o sshkage
+env CGO_ENABLED=0 go build -o andy-key
 
 # Запуск
-./sshkage
+./andy-key
 
 # Администратор по умолчанию: admin/admin (обязательно смените!)
 ```

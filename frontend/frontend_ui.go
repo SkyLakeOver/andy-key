@@ -6,7 +6,7 @@ var uiHTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>sshkage</title>
+<title>andy-key</title>
 <style>
 :root {
 --primary: #E95420;
@@ -583,8 +583,8 @@ margin-bottom: 10px;
 <div class="app-container">
 <aside class="sidebar">
 <div class="sidebar-header">
-<h1>sshkage</h1>
-<div class="subtitle">sshkage</div>
+<h1>andy-key</h1>
+<div class="subtitle">andy-key</div>
 </div>
 <ul class="nav-menu">
 <!-- АДМИНИСТРИРОВАНИЕ -->
