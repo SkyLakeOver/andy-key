@@ -551,7 +551,7 @@ document.addEventListener('DOMContentLoaded', function() {
 	addressServiceGroup = document.getElementById('address-service-group');
 	addressAlert = document.getElementById('address-alert');
 	saveAddressBtn = document.getElementById('save-address');
-	addressesTable = document.getElementById('addresses-table');
+	addressesTable = document.getElementById('addresses-table').getElementsByTagName('tbody')[0];
 	
 	// Сотрудники
 	employeeFullName = document.getElementById('employee-full-name');
@@ -561,7 +561,7 @@ document.addEventListener('DOMContentLoaded', function() {
 	employeeAddress = document.getElementById('employee-address');
 	employeeAlert = document.getElementById('employee-alert');
 	saveEmployeeBtn = document.getElementById('save-employee');
-	employeesTable = document.getElementById('employees-table');
+	employeesTable = document.getElementById('employees-table').getElementsByTagName('tbody')[0];
 	
 	// АРМ
 	workstationAddress = document.getElementById('workstation-address');

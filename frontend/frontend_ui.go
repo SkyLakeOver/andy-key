@@ -473,6 +473,11 @@ margin-top: 15px;
 padding-top: 15px;
 border-top: 1px solid #ddd;
 }
+.table-info {
+margin-top: 10px;
+color: #666;
+font-size: 0.9em;
+}
 .pagination {
 display: flex;
 list-style: none;
@@ -984,13 +989,22 @@ margin-bottom: 10px;
 <table id="addresses-table">
 <thead>
 <tr>
-<th>Улица</th>
-<th>Дом</th>
-<th>Кабинет</th>
-<th>Коридор</th>
-<th>Этаж</th>
-<th>Служебное помещение</th>
+<th onclick="sortAddressesTable('street')">Улица</th>
+<th onclick="sortAddressesTable('building')">Дом</th>
+<th onclick="sortAddressesTable('cabinet')">Кабинет</th>
+<th onclick="sortAddressesTable('corridor')">Коридор</th>
+<th onclick="sortAddressesTable('floor')">Этаж</th>
+<th onclick="sortAddressesTable('service_room')">Служебное помещение</th>
 <th>Действия</th>
+</tr>
+<tr class="search-row">
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterAddressesTable()"></td>
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterAddressesTable()"></td>
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterAddressesTable()"></td>
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterAddressesTable()"></td>
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterAddressesTable()"></td>
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterAddressesTable()"></td>
+<td></td>
 </tr>
 </thead>
 <tbody>
@@ -999,6 +1013,39 @@ margin-bottom: 10px;
 </tr>
 </tbody>
 </table>
+</div>
+<div class="table-footer">
+<div>
+<select id="addresses-page-size" class="form-control" style="width:auto;display:inline-block;">
+<option value="10">10 строк</option>
+<option value="25" selected>25 строк</option>
+<option value="50">50 строк</option>
+<option value="100">100 строк</option>
+<option value="0">Все строки</option>
+</select>
+</div>
+<div>
+<nav>
+<ul class="pagination" id="addresses-pagination">
+<li class="page-item disabled">
+<a class="page-link" href="#" onclick="changeAddressesPage(event, 'prev')" aria-label="Previous">
+<span aria-hidden="true">&laquo;</span>
+</a>
+</li>
+<li class="page-item active">
+<a class="page-link" href="#" onclick="changeAddressesPage(event, 1)">1</a>
+</li>
+<li class="page-item">
+<a class="page-link" href="#" onclick="changeAddressesPage(event, 'next')" aria-label="Next">
+<span aria-hidden="true">&raquo;</span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+<div class="table-info">
+<span id="addresses-info">Показано 0 из 0 записей</span>
 </div>
 </div>
 </div>
@@ -1046,16 +1093,24 @@ margin-bottom: 10px;
 <h2>Список сотрудников</h2>
 </div>
 <div class="card-body">
-<div class="table-container">
+<div class="table-container scrollable-table-container">
 <table id="employees-table">
 <thead>
 <tr>
-<th>ФИО полностью</th>
-<th>ФИО (инициалы)</th>
-<th>Городской тел.</th>
-<th>Внутренний тел.</th>
-<th>Адрес</th>
+<th onclick="sortEmployeesTable('full_name')">ФИО полностью</th>
+<th onclick="sortEmployeesTable('short_name')">ФИО (инициалы)</th>
+<th onclick="sortEmployeesTable('phone_city')">Городской тел.</th>
+<th onclick="sortEmployeesTable('phone_internal')">Внутренний тел.</th>
+<th onclick="sortEmployeesTable('full_address')">Адрес</th>
 <th>Действия</th>
+</tr>
+<tr class="search-row">
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterEmployeesTable()"></td>
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterEmployeesTable()"></td>
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterEmployeesTable()"></td>
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterEmployeesTable()"></td>
+<td><input type="text" class="form-control form-control-sm" placeholder="Поиск..." oninput="filterEmployeesTable()"></td>
+<td></td>
 </tr>
 </thead>
 <tbody>
@@ -1064,6 +1119,40 @@ margin-bottom: 10px;
 </tr>
 </tbody>
 </table>
+</div>
+<div class="table-footer">
+<div>
+<select id="employees-page-size" class="form-control" style="width:auto;display:inline-block;">
+<option value="10">10 строк</option>
+<option value="25" selected>25 строк</option>
+<option value="50">50 строк</option>
+<option value="100">100 строк</option>
+<option value="0">Все строки</option>
+</select>
+</div>
+<div>
+<nav>
+<ul class="pagination" id="employees-pagination">
+<li class="page-item disabled">
+<a class="page-link" href="#" onclick="changeEmployeesPage(event, 'prev')" aria-label="Previous">
+<span aria-hidden="true">&laquo;</span>
+</a>
+</li>
+<li class="page-item active">
+<a class="page-link" href="#" onclick="changeEmployeesPage(event, 1)">1</a>
+</li>
+<li class="page-item">
+<a class="page-link" href="#" onclick="changeEmployeesPage(event, 'next')" aria-label="Next">
+<span aria-hidden="true">&raquo;</span>
+</a>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+<div class="table-info">
+<span id="employees-info">Показано 0 из 0 записей</span>
+</div>
 </div>
 </div>
 </div>
