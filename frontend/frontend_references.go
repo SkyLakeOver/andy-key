@@ -668,18 +668,149 @@ function renderWorkstationsTable() {
 	}
 }
 
+// ==================== ФУНКЦИИ ДЛЯ СПРАВОЧНИКА ХОСТОВ ====================
+function filterHostsTable() {
+	filteredHosts = hosts.filter(function(host) {
+		var inputs = document.querySelectorAll('#hosts-table .search-row input');
+		for (var i = 0; i < inputs.length; i++) {
+			var query = inputs[i].value.toLowerCase().trim();
+			if (query) {
+				var value = '';
+				switch(i) {
+					case 0: value = host.full_address || ''; break;
+					case 1: value = host.employee_short_name || ''; break;
+					case 2: value = host.ip || ''; break;
+					case 3: value = (host.ssh_port || '').toString(); break;
+					case 4: value = (host.enabled === '1' || host.enabled === 1 || host.enabled === true) ? 'включён' : 'отключён'; break;
+				}
+				if (value.toLowerCase().indexOf(query) === -1) {
+					return false;
+				}
+			}
+		}
+		return true;
+	});
+	
+	var pageSize = parseInt(document.getElementById('hosts-page-size').value) || 25;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(filteredHosts.length / pageSize);
+	updateHostsPagination(1, totalPages);
+	renderHostsTable();
+}
+
+function sortHostsTable(column) {
+	if (hostSortColumn === column) {
+		hostSortDirection = hostSortDirection === 'asc' ? 'desc' : 'asc';
+	} else {
+		hostSortColumn = column;
+		hostSortDirection = 'asc';
+	}
+	renderHostsTable();
+}
+
+function updateHostsPagination(currentPage, totalPages) {
+	var pagination = document.getElementById('hosts-pagination');
+	if (!pagination) return;
+	
+	pagination.innerHTML = 
+		'<li class="page-item ' + (currentPage === 1 ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeHostsPage(event, \'prev\')" aria-label="Previous">' +
+				'<span aria-hidden="true">&laquo;</span>' +
+			'</a>' +
+		'</li>';
+	
+	for (var i = 1; i <= totalPages && i <= 5; i++) {
+		pagination.innerHTML += 
+			'<li class="page-item ' + (i === currentPage ? 'active' : '') + '">' +
+				'<a class="page-link" href="#" onclick="changeHostsPage(event, ' + i + ')">' + i + '</a>' +
+			'</li>';
+	}
+	
+	pagination.innerHTML += 
+		'<li class="page-item ' + (currentPage === totalPages ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeHostsPage(event, \'next\')" aria-label="Next">' +
+				'<span aria-hidden="true">&raquo;</span>' +
+			'</a>' +
+		'</li>';
+}
+
+function changeHostsPage(event, direction) {
+	if (event && event.preventDefault) {
+		event.preventDefault();
+	}
+	
+	var currentPage = parseInt(document.querySelector('#hosts-pagination .page-item.active .page-link').textContent) || 1;
+	var pageSize = parseInt(document.getElementById('hosts-page-size').value) || 25;
+	var totalItems = filteredHosts.length > 0 ? filteredHosts.length : hosts.length;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(totalItems / pageSize);
+	
+	var newPage;
+	if (direction === 'prev') {
+		newPage = Math.max(1, currentPage - 1);
+	} else if (direction === 'next') {
+		newPage = Math.min(totalPages, currentPage + 1);
+	} else if (typeof direction === 'number') {
+		newPage = Math.max(1, Math.min(totalPages, direction));
+	}
+	
+	if (newPage) {
+		updateHostsPagination(newPage, totalPages);
+		renderHostsTable();
+	}
+}
+
 function renderHostsTable() {
 	if (!hostsTable) return;
-	if (hosts.length === 0) {
+	
+	var container = document.querySelector('.scrollable-table-container');
+	var scrollTop = container ? container.scrollTop : 0;
+	
+	var dataToRender = filteredHosts.length > 0 ? filteredHosts : hosts;
+	
+	if (dataToRender.length === 0) {
 		hostsTable.innerHTML = '<tr><td colspan="6" class="empty-state">Хосты не найдены</td></tr>';
+		var infoEl = document.getElementById('hosts-info');
+		if (infoEl) infoEl.textContent = 'Показано 0 из ' + hosts.length + ' записей';
+		
+		if (container) {
+			container.scrollTop = scrollTop;
+		}
 		return;
 	}
-	hosts.sort((a, b) => {
-		if (a.full_address !== b.full_address) return a.full_address.localeCompare(b.full_address);
-		return (a.employee_short_name || '').localeCompare(b.employee_short_name || '');
-	});
+	
+	var sorted = [...dataToRender];
+	if (hostSortColumn) {
+		sorted.sort(function(a, b) {
+			var valA = a[hostSortColumn] || '';
+			var valB = b[hostSortColumn] || '';
+			
+			if (typeof valA === 'string' && typeof valB === 'string') {
+				valA = valA.toLowerCase();
+				valB = valB.toLowerCase();
+			}
+			
+			if (valA < valB) return hostSortDirection === 'asc' ? -1 : 1;
+			if (valA > valB) return hostSortDirection === 'asc' ? 1 : -1;
+			return 0;
+		});
+	}
+	
+	var pageSize = parseInt(document.getElementById('hosts-page-size').value) || 25;
+	var currentPage = parseInt(document.querySelector('#hosts-pagination .page-item.active .page-link').textContent) || 1;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(sorted.length / pageSize);
+	
+	updateHostsPagination(currentPage, totalPages);
+	
+	if (currentPage > totalPages && totalPages > 0) {
+		currentPage = totalPages;
+		updateHostsPagination(currentPage, totalPages);
+	}
+	
+	var start = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
+	var end = pageSize === 0 ? sorted.length : start + pageSize;
+	var pageItems = pageSize === 0 ? sorted : sorted.slice(start, end);
+	
 	var html = '';
-	hosts.forEach(host => {
+	pageItems.forEach(host => {
 		var statusClass = host.enabled === '1' || host.enabled === 1 || host.enabled === true ? 'success' : 'danger';
 		var statusText = host.enabled === '1' || host.enabled === 1 || host.enabled === true ? 'Включён' : 'Отключён';
 		html += '<tr data-id="' + host.id + '">' +
@@ -696,22 +827,162 @@ function renderHostsTable() {
 			'</td>' +
 		'</tr>';
 	});
+	
 	hostsTable.innerHTML = html;
+	
+	var infoEl = document.getElementById('hosts-info');
+	if (infoEl) {
+		infoEl.textContent = 'Показано ' + (pageItems.length === 0 ? 0 : start + 1) + '-' + end + ' из ' + sorted.length + ' записей (всего: ' + hosts.length + ')';
+	}
+	
+	if (container) {
+		container.scrollTop = scrollTop;
+	}
+}
+
+// ==================== ФУНКЦИИ ДЛЯ СПРАВОЧНИКА СЕТЕВОГО ОБОРУДОВАНИЯ ====================
+function filterNetworkEquipmentTable() {
+	filteredNetworkEquipment = networkEquipment.filter(function(eq) {
+		var inputs = document.querySelectorAll('#network-equipment-table .search-row input');
+		for (var i = 0; i < inputs.length; i++) {
+			var query = inputs[i].value.toLowerCase().trim();
+			if (query) {
+				var value = '';
+				switch(i) {
+					case 0: value = eq.full_address || ''; break;
+					case 1: value = eq.category || ''; break;
+					case 2: value = eq.type || ''; break;
+					case 3: value = eq.model || ''; break;
+					case 4: value = (eq.port_count || '').toString(); break;
+				}
+				if (value.toLowerCase().indexOf(query) === -1) {
+					return false;
+				}
+			}
+		}
+		return true;
+	});
+	
+	var pageSize = parseInt(document.getElementById('network-equipment-page-size').value) || 25;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(filteredNetworkEquipment.length / pageSize);
+	updateNetworkEquipmentPagination(1, totalPages);
+	renderNetworkEquipmentTable();
+}
+
+function sortNetworkEquipmentTable(column) {
+	if (networkEquipmentSortColumn === column) {
+		networkEquipmentSortDirection = networkEquipmentSortDirection === 'asc' ? 'desc' : 'asc';
+	} else {
+		networkEquipmentSortColumn = column;
+		networkEquipmentSortDirection = 'asc';
+	}
+	renderNetworkEquipmentTable();
+}
+
+function updateNetworkEquipmentPagination(currentPage, totalPages) {
+	var pagination = document.getElementById('network-equipment-pagination');
+	if (!pagination) return;
+	
+	pagination.innerHTML = 
+		'<li class="page-item ' + (currentPage === 1 ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeNetworkEquipmentPage(event, \'prev\')" aria-label="Previous">' +
+				'<span aria-hidden="true">&laquo;</span>' +
+			'</a>' +
+		'</li>';
+	
+	for (var i = 1; i <= totalPages && i <= 5; i++) {
+		pagination.innerHTML += 
+			'<li class="page-item ' + (i === currentPage ? 'active' : '') + '">' +
+				'<a class="page-link" href="#" onclick="changeNetworkEquipmentPage(event, ' + i + ')">' + i + '</a>' +
+			'</li>';
+	}
+	
+	pagination.innerHTML += 
+		'<li class="page-item ' + (currentPage === totalPages ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeNetworkEquipmentPage(event, \'next\')" aria-label="Next">' +
+				'<span aria-hidden="true">&raquo;</span>' +
+			'</a>' +
+		'</li>';
+}
+
+function changeNetworkEquipmentPage(event, direction) {
+	if (event && event.preventDefault) {
+		event.preventDefault();
+	}
+	
+	var currentPage = parseInt(document.querySelector('#network-equipment-pagination .page-item.active .page-link').textContent) || 1;
+	var pageSize = parseInt(document.getElementById('network-equipment-page-size').value) || 25;
+	var totalItems = filteredNetworkEquipment.length > 0 ? filteredNetworkEquipment.length : networkEquipment.length;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(totalItems / pageSize);
+	
+	var newPage;
+	if (direction === 'prev') {
+		newPage = Math.max(1, currentPage - 1);
+	} else if (direction === 'next') {
+		newPage = Math.min(totalPages, currentPage + 1);
+	} else if (typeof direction === 'number') {
+		newPage = Math.max(1, Math.min(totalPages, direction));
+	}
+	
+	if (newPage) {
+		updateNetworkEquipmentPagination(newPage, totalPages);
+		renderNetworkEquipmentTable();
+	}
 }
 
 function renderNetworkEquipmentTable() {
 	if (!networkEquipmentTable) return;
-	if (networkEquipment.length === 0) {
+	
+	var container = document.querySelector('.scrollable-table-container');
+	var scrollTop = container ? container.scrollTop : 0;
+	
+	var dataToRender = filteredNetworkEquipment.length > 0 ? filteredNetworkEquipment : networkEquipment;
+	
+	if (dataToRender.length === 0) {
 		networkEquipmentTable.innerHTML = '<tr><td colspan="6" class="empty-state">Оборудование не найдено</td></tr>';
+		var infoEl = document.getElementById('network-equipment-info');
+		if (infoEl) infoEl.textContent = 'Показано 0 из ' + networkEquipment.length + ' записей';
+		
+		if (container) {
+			container.scrollTop = scrollTop;
+		}
 		return;
 	}
-	networkEquipment.sort((a, b) => {
-		if (a.full_address !== b.full_address) return a.full_address.localeCompare(b.full_address);
-		if (a.category !== b.category) return a.category.localeCompare(b.category);
-		return a.model.localeCompare(b.model);
-	});
+	
+	var sorted = [...dataToRender];
+	if (networkEquipmentSortColumn) {
+		sorted.sort(function(a, b) {
+			var valA = a[networkEquipmentSortColumn] || '';
+			var valB = b[networkEquipmentSortColumn] || '';
+			
+			if (typeof valA === 'string' && typeof valB === 'string') {
+				valA = valA.toLowerCase();
+				valB = valB.toLowerCase();
+			}
+			
+			if (valA < valB) return networkEquipmentSortDirection === 'asc' ? -1 : 1;
+			if (valA > valB) return networkEquipmentSortDirection === 'asc' ? 1 : -1;
+			return 0;
+		});
+	}
+	
+	var pageSize = parseInt(document.getElementById('network-equipment-page-size').value) || 25;
+	var currentPage = parseInt(document.querySelector('#network-equipment-pagination .page-item.active .page-link').textContent) || 1;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(sorted.length / pageSize);
+	
+	updateNetworkEquipmentPagination(currentPage, totalPages);
+	
+	if (currentPage > totalPages && totalPages > 0) {
+		currentPage = totalPages;
+		updateNetworkEquipmentPagination(currentPage, totalPages);
+	}
+	
+	var start = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
+	var end = pageSize === 0 ? sorted.length : start + pageSize;
+	var pageItems = pageSize === 0 ? sorted : sorted.slice(start, end);
+	
 	var html = '';
-	networkEquipment.forEach(eq => {
+	pageItems.forEach(eq => {
 		html += '<tr data-id="' + eq.id + '">' +
 			'<td>' + escapeHtml(eq.full_address) + '</td>' +
 			'<td>' + escapeHtml(eq.category) + '</td>' +
@@ -726,21 +997,162 @@ function renderNetworkEquipmentTable() {
 			'</td>' +
 		'</tr>';
 	});
+	
 	networkEquipmentTable.innerHTML = html;
+	
+	var infoEl = document.getElementById('network-equipment-info');
+	if (infoEl) {
+		infoEl.textContent = 'Показано ' + (pageItems.length === 0 ? 0 : start + 1) + '-' + end + ' из ' + sorted.length + ' записей (всего: ' + networkEquipment.length + ')';
+	}
+	
+	if (container) {
+		container.scrollTop = scrollTop;
+	}
+}
+
+// ==================== ФУНКЦИИ ДЛЯ СПРАВОЧНИКА МФУ ====================
+function filterNetworkMFPsTable() {
+	filteredNetworkMFPs = networkMFPs.filter(function(mfp) {
+		var inputs = document.querySelectorAll('#network-mfps-table .search-row input');
+		for (var i = 0; i < inputs.length; i++) {
+			var query = inputs[i].value.toLowerCase().trim();
+			if (query) {
+				var value = '';
+				switch(i) {
+					case 0: value = mfp.full_address || ''; break;
+					case 1: value = mfp.model || ''; break;
+					case 2: value = mfp.ip || ''; break;
+					case 3: value = mfp.hostname || ''; break;
+					case 4: value = mfp.serial_number || ''; break;
+				}
+				if (value.toLowerCase().indexOf(query) === -1) {
+					return false;
+				}
+			}
+		}
+		return true;
+	});
+	
+	var pageSize = parseInt(document.getElementById('network-mfps-page-size').value) || 25;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(filteredNetworkMFPs.length / pageSize);
+	updateNetworkMFPsPagination(1, totalPages);
+	renderNetworkMFPsTable();
+}
+
+function sortNetworkMFPsTable(column) {
+	if (networkMFPSortColumn === column) {
+		networkMFPSortDirection = networkMFPSortDirection === 'asc' ? 'desc' : 'asc';
+	} else {
+		networkMFPSortColumn = column;
+		networkMFPSortDirection = 'asc';
+	}
+	renderNetworkMFPsTable();
+}
+
+function updateNetworkMFPsPagination(currentPage, totalPages) {
+	var pagination = document.getElementById('network-mfps-pagination');
+	if (!pagination) return;
+	
+	pagination.innerHTML = 
+		'<li class="page-item ' + (currentPage === 1 ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeNetworkMFPsPage(event, \'prev\')" aria-label="Previous">' +
+				'<span aria-hidden="true">&laquo;</span>' +
+			'</a>' +
+		'</li>';
+	
+	for (var i = 1; i <= totalPages && i <= 5; i++) {
+		pagination.innerHTML += 
+			'<li class="page-item ' + (i === currentPage ? 'active' : '') + '">' +
+				'<a class="page-link" href="#" onclick="changeNetworkMFPsPage(event, ' + i + ')">' + i + '</a>' +
+			'</li>';
+	}
+	
+	pagination.innerHTML += 
+		'<li class="page-item ' + (currentPage === totalPages ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeNetworkMFPsPage(event, \'next\')" aria-label="Next">' +
+				'<span aria-hidden="true">&raquo;</span>' +
+			'</a>' +
+		'</li>';
+}
+
+function changeNetworkMFPsPage(event, direction) {
+	if (event && event.preventDefault) {
+		event.preventDefault();
+	}
+	
+	var currentPage = parseInt(document.querySelector('#network-mfps-pagination .page-item.active .page-link').textContent) || 1;
+	var pageSize = parseInt(document.getElementById('network-mfps-page-size').value) || 25;
+	var totalItems = filteredNetworkMFPs.length > 0 ? filteredNetworkMFPs.length : networkMFPs.length;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(totalItems / pageSize);
+	
+	var newPage;
+	if (direction === 'prev') {
+		newPage = Math.max(1, currentPage - 1);
+	} else if (direction === 'next') {
+		newPage = Math.min(totalPages, currentPage + 1);
+	} else if (typeof direction === 'number') {
+		newPage = Math.max(1, Math.min(totalPages, direction));
+	}
+	
+	if (newPage) {
+		updateNetworkMFPsPagination(newPage, totalPages);
+		renderNetworkMFPsTable();
+	}
 }
 
 function renderNetworkMFPsTable() {
 	if (!networkMFPsTable) return;
-	if (networkMFPs.length === 0) {
+	
+	var container = document.querySelector('.scrollable-table-container');
+	var scrollTop = container ? container.scrollTop : 0;
+	
+	var dataToRender = filteredNetworkMFPs.length > 0 ? filteredNetworkMFPs : networkMFPs;
+	
+	if (dataToRender.length === 0) {
 		networkMFPsTable.innerHTML = '<tr><td colspan="6" class="empty-state">МФУ не найдены</td></tr>';
+		var infoEl = document.getElementById('network-mfps-info');
+		if (infoEl) infoEl.textContent = 'Показано 0 из ' + networkMFPs.length + ' записей';
+		
+		if (container) {
+			container.scrollTop = scrollTop;
+		}
 		return;
 	}
-	networkMFPs.sort((a, b) => {
-		if (a.full_address !== b.full_address) return a.full_address.localeCompare(b.full_address);
-		return a.model.localeCompare(b.model);
-	});
+	
+	var sorted = [...dataToRender];
+	if (networkMFPSortColumn) {
+		sorted.sort(function(a, b) {
+			var valA = a[networkMFPSortColumn] || '';
+			var valB = b[networkMFPSortColumn] || '';
+			
+			if (typeof valA === 'string' && typeof valB === 'string') {
+				valA = valA.toLowerCase();
+				valB = valB.toLowerCase();
+			}
+			
+			if (valA < valB) return networkMFPSortDirection === 'asc' ? -1 : 1;
+			if (valA > valB) return networkMFPSortDirection === 'asc' ? 1 : -1;
+			return 0;
+		});
+	}
+	
+	var pageSize = parseInt(document.getElementById('network-mfps-page-size').value) || 25;
+	var currentPage = parseInt(document.querySelector('#network-mfps-pagination .page-item.active .page-link').textContent) || 1;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(sorted.length / pageSize);
+	
+	updateNetworkMFPsPagination(currentPage, totalPages);
+	
+	if (currentPage > totalPages && totalPages > 0) {
+		currentPage = totalPages;
+		updateNetworkMFPsPagination(currentPage, totalPages);
+	}
+	
+	var start = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
+	var end = pageSize === 0 ? sorted.length : start + pageSize;
+	var pageItems = pageSize === 0 ? sorted : sorted.slice(start, end);
+	
 	var html = '';
-	networkMFPs.forEach(mfp => {
+	pageItems.forEach(mfp => {
 		html += '<tr data-id="' + mfp.id + '">' +
 			'<td>' + escapeHtml(mfp.full_address) + '</td>' +
 			'<td>' + escapeHtml(mfp.model) + '</td>' +
@@ -755,21 +1167,160 @@ function renderNetworkMFPsTable() {
 			'</td>' +
 		'</tr>';
 	});
+	
 	networkMFPsTable.innerHTML = html;
+	
+	var infoEl = document.getElementById('network-mfps-info');
+	if (infoEl) {
+		infoEl.textContent = 'Показано ' + (pageItems.length === 0 ? 0 : start + 1) + '-' + end + ' из ' + sorted.length + ' записей (всего: ' + networkMFPs.length + ')';
+	}
+	
+	if (container) {
+		container.scrollTop = scrollTop;
+	}
+}
+
+// ==================== ФУНКЦИИ ДЛЯ СПРАВОЧНИКА IP-ТЕЛЕФОНОВ ====================
+function filterIPPhonesTable() {
+	filteredIPPhones = ipPhones.filter(function(phone) {
+		var inputs = document.querySelectorAll('#ip-phones-table .search-row input');
+		for (var i = 0; i < inputs.length; i++) {
+			var query = inputs[i].value.toLowerCase().trim();
+			if (query) {
+				var value = '';
+				switch(i) {
+					case 0: value = phone.full_address || ''; break;
+					case 1: value = phone.employee_full_name || ''; break;
+					case 2: value = phone.ip || ''; break;
+				}
+				if (value.toLowerCase().indexOf(query) === -1) {
+					return false;
+				}
+			}
+		}
+		return true;
+	});
+	
+	var pageSize = parseInt(document.getElementById('ip-phones-page-size').value) || 25;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(filteredIPPhones.length / pageSize);
+	updateIPPhonesPagination(1, totalPages);
+	renderIPPhonesTable();
+}
+
+function sortIPPhonesTable(column) {
+	if (ipPhoneSortColumn === column) {
+		ipPhoneSortDirection = ipPhoneSortDirection === 'asc' ? 'desc' : 'asc';
+	} else {
+		ipPhoneSortColumn = column;
+		ipPhoneSortDirection = 'asc';
+	}
+	renderIPPhonesTable();
+}
+
+function updateIPPhonesPagination(currentPage, totalPages) {
+	var pagination = document.getElementById('ip-phones-pagination');
+	if (!pagination) return;
+	
+	pagination.innerHTML = 
+		'<li class="page-item ' + (currentPage === 1 ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeIPPhonesPage(event, \'prev\')" aria-label="Previous">' +
+				'<span aria-hidden="true">&laquo;</span>' +
+			'</a>' +
+		'</li>';
+	
+	for (var i = 1; i <= totalPages && i <= 5; i++) {
+		pagination.innerHTML += 
+			'<li class="page-item ' + (i === currentPage ? 'active' : '') + '">' +
+				'<a class="page-link" href="#" onclick="changeIPPhonesPage(event, ' + i + ')">' + i + '</a>' +
+			'</li>';
+	}
+	
+	pagination.innerHTML += 
+		'<li class="page-item ' + (currentPage === totalPages ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeIPPhonesPage(event, \'next\')" aria-label="Next">' +
+				'<span aria-hidden="true">&raquo;</span>' +
+			'</a>' +
+		'</li>';
+}
+
+function changeIPPhonesPage(event, direction) {
+	if (event && event.preventDefault) {
+		event.preventDefault();
+	}
+	
+	var currentPage = parseInt(document.querySelector('#ip-phones-pagination .page-item.active .page-link').textContent) || 1;
+	var pageSize = parseInt(document.getElementById('ip-phones-page-size').value) || 25;
+	var totalItems = filteredIPPhones.length > 0 ? filteredIPPhones.length : ipPhones.length;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(totalItems / pageSize);
+	
+	var newPage;
+	if (direction === 'prev') {
+		newPage = Math.max(1, currentPage - 1);
+	} else if (direction === 'next') {
+		newPage = Math.min(totalPages, currentPage + 1);
+	} else if (typeof direction === 'number') {
+		newPage = Math.max(1, Math.min(totalPages, direction));
+	}
+	
+	if (newPage) {
+		updateIPPhonesPagination(newPage, totalPages);
+		renderIPPhonesTable();
+	}
 }
 
 function renderIPPhonesTable() {
 	if (!ipPhonesTable) return;
-	if (ipPhones.length === 0) {
+	
+	var container = document.querySelector('.scrollable-table-container');
+	var scrollTop = container ? container.scrollTop : 0;
+	
+	var dataToRender = filteredIPPhones.length > 0 ? filteredIPPhones : ipPhones;
+	
+	if (dataToRender.length === 0) {
 		ipPhonesTable.innerHTML = '<tr><td colspan="4" class="empty-state">Телефоны не найдены</td></tr>';
+		var infoEl = document.getElementById('ip-phones-info');
+		if (infoEl) infoEl.textContent = 'Показано 0 из ' + ipPhones.length + ' записей';
+		
+		if (container) {
+			container.scrollTop = scrollTop;
+		}
 		return;
 	}
-	ipPhones.sort((a, b) => {
-		if (a.full_address !== b.full_address) return a.full_address.localeCompare(b.full_address);
-		return a.employee_full_name.localeCompare(b.employee_full_name);
-	});
+	
+	var sorted = [...dataToRender];
+	if (ipPhoneSortColumn) {
+		sorted.sort(function(a, b) {
+			var valA = a[ipPhoneSortColumn] || '';
+			var valB = b[ipPhoneSortColumn] || '';
+			
+			if (typeof valA === 'string' && typeof valB === 'string') {
+				valA = valA.toLowerCase();
+				valB = valB.toLowerCase();
+			}
+			
+			if (valA < valB) return ipPhoneSortDirection === 'asc' ? -1 : 1;
+			if (valA > valB) return ipPhoneSortDirection === 'asc' ? 1 : -1;
+			return 0;
+		});
+	}
+	
+	var pageSize = parseInt(document.getElementById('ip-phones-page-size').value) || 25;
+	var currentPage = parseInt(document.querySelector('#ip-phones-pagination .page-item.active .page-link').textContent) || 1;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(sorted.length / pageSize);
+	
+	updateIPPhonesPagination(currentPage, totalPages);
+	
+	if (currentPage > totalPages && totalPages > 0) {
+		currentPage = totalPages;
+		updateIPPhonesPagination(currentPage, totalPages);
+	}
+	
+	var start = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
+	var end = pageSize === 0 ? sorted.length : start + pageSize;
+	var pageItems = pageSize === 0 ? sorted : sorted.slice(start, end);
+	
 	var html = '';
-	ipPhones.forEach(phone => {
+	pageItems.forEach(phone => {
 		html += '<tr data-id="' + phone.id + '">' +
 			'<td>' + escapeHtml(phone.full_address) + '</td>' +
 			'<td>' + escapeHtml(phone.employee_full_name) + '</td>' +
@@ -782,7 +1333,17 @@ function renderIPPhonesTable() {
 			'</td>' +
 		'</tr>';
 	});
+	
 	ipPhonesTable.innerHTML = html;
+	
+	var infoEl = document.getElementById('ip-phones-info');
+	if (infoEl) {
+		infoEl.textContent = 'Показано ' + (pageItems.length === 0 ? 0 : start + 1) + '-' + end + ' из ' + sorted.length + ' записей (всего: ' + ipPhones.length + ')';
+	}
+	
+	if (container) {
+		container.scrollTop = scrollTop;
+	}
 }
 
 // ==================== ФУНКЦИИ ЗАПОЛНЕНИЯ ВЫПАДАЮЩИХ СПИСКОВ ====================
