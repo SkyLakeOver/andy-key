@@ -1,7 +1,3 @@
-```
-# Environment variables
-.env*
+(frontend/frontend_references.go is a source code file, and there are no build artifacts, dependencies, or temporary files in the changes - only a single Go source file was modified)
 
-# SSH keys and similar sensitive files
-*key*
-```
+(empty - output nothing)

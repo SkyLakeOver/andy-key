@@ -77,6 +77,378 @@ var filteredWorkstations = [];
 var workstationSortColumn = '';
 var workstationSortDirection = 'asc';
 
+// Глобальные переменные для фильтрации и сортировки адресов
+var filteredAddresses = [];
+var addressSortColumn = '';
+var addressSortDirection = 'asc';
+
+// Глобальные переменные для фильтрации и сортировки сотрудников
+var filteredEmployees = [];
+var employeeSortColumn = '';
+var employeeSortDirection = 'asc';
+
+// Глобальные переменные для фильтрации и сортировки хостов
+var filteredHosts = [];
+var hostSortColumn = '';
+var hostSortDirection = 'asc';
+
+// Глобальные переменные для фильтрации и сортировки сетевого оборудования
+var filteredNetworkEquipment = [];
+var networkEquipmentSortColumn = '';
+var networkEquipmentSortDirection = 'asc';
+
+// Глобальные переменные для фильтрации и сортировки МФУ
+var filteredNetworkMFPs = [];
+var networkMFPSortColumn = '';
+var networkMFPSortDirection = 'asc';
+
+// Глобальные переменные для фильтрации и сортировки IP-телефонов
+var filteredIPPhones = [];
+var ipPhoneSortColumn = '';
+var ipPhoneSortDirection = 'asc';
+
+// ==================== ФУНКЦИИ ДЛЯ СПРАВОЧНИКА АДРЕСОВ ====================
+function filterAddressesTable() {
+	filteredAddresses = addresses.filter(function(addr) {
+		var inputs = document.querySelectorAll('#addresses-table .search-row input');
+		for (var i = 0; i < inputs.length; i++) {
+			var query = inputs[i].value.toLowerCase().trim();
+			if (query) {
+				var value = '';
+				switch(i) {
+					case 0: value = addr.street || ''; break;
+					case 1: value = addr.building || ''; break;
+					case 2: value = addr.cabinet || ''; break;
+					case 3: value = addr.corridor || ''; break;
+					case 4: value = (addr.floor || '').toString(); break;
+					case 5: value = addr.service_room || ''; break;
+				}
+				if (value.toLowerCase().indexOf(query) === -1) {
+					return false;
+				}
+			}
+		}
+		return true;
+	});
+	
+	var pageSize = parseInt(document.getElementById('addresses-page-size').value) || 25;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(filteredAddresses.length / pageSize);
+	updateAddressesPagination(1, totalPages);
+	renderAddressesTable();
+}
+
+function sortAddressesTable(column) {
+	if (addressSortColumn === column) {
+		addressSortDirection = addressSortDirection === 'asc' ? 'desc' : 'asc';
+	} else {
+		addressSortColumn = column;
+		addressSortDirection = 'asc';
+	}
+	renderAddressesTable();
+}
+
+function updateAddressesPagination(currentPage, totalPages) {
+	var pagination = document.getElementById('addresses-pagination');
+	if (!pagination) return;
+	
+	pagination.innerHTML = 
+		'<li class="page-item ' + (currentPage === 1 ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeAddressesPage(event, \'prev\')" aria-label="Previous">' +
+				'<span aria-hidden="true">&laquo;</span>' +
+			'</a>' +
+		'</li>';
+	
+	for (var i = 1; i <= totalPages && i <= 5; i++) {
+		pagination.innerHTML += 
+			'<li class="page-item ' + (i === currentPage ? 'active' : '') + '">' +
+				'<a class="page-link" href="#" onclick="changeAddressesPage(event, ' + i + ')">' + i + '</a>' +
+			'</li>';
+	}
+	
+	pagination.innerHTML += 
+		'<li class="page-item ' + (currentPage === totalPages ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeAddressesPage(event, \'next\')" aria-label="Next">' +
+				'<span aria-hidden="true">&raquo;</span>' +
+			'</a>' +
+		'</li>';
+}
+
+function changeAddressesPage(event, direction) {
+	if (event && event.preventDefault) {
+		event.preventDefault();
+	}
+	
+	var currentPage = parseInt(document.querySelector('#addresses-pagination .page-item.active .page-link').textContent) || 1;
+	var pageSize = parseInt(document.getElementById('addresses-page-size').value) || 25;
+	var totalItems = filteredAddresses.length > 0 ? filteredAddresses.length : addresses.length;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(totalItems / pageSize);
+	
+	var newPage;
+	if (direction === 'prev') {
+		newPage = Math.max(1, currentPage - 1);
+	} else if (direction === 'next') {
+		newPage = Math.min(totalPages, currentPage + 1);
+	} else if (typeof direction === 'number') {
+		newPage = Math.max(1, Math.min(totalPages, direction));
+	}
+	
+	if (newPage) {
+		updateAddressesPagination(newPage, totalPages);
+		renderAddressesTable();
+	}
+}
+
+function renderAddressesTable() {
+	if (!addressesTable) return;
+	
+	var container = document.querySelector('.scrollable-table-container');
+	var scrollTop = container ? container.scrollTop : 0;
+	
+	var dataToRender = filteredAddresses.length > 0 ? filteredAddresses : addresses;
+	
+	if (dataToRender.length === 0) {
+		addressesTable.innerHTML = '<tr><td colspan=\"7\" class=\"empty-state\">Адреса не найдены</td></tr>';
+		var infoEl = document.getElementById('addresses-info');
+		if (infoEl) infoEl.textContent = 'Показано 0 из ' + addresses.length + ' записей';
+		
+		if (container) {
+			container.scrollTop = scrollTop;
+		}
+		return;
+	}
+	
+	var sorted = [...dataToRender];
+	if (addressSortColumn) {
+		sorted.sort(function(a, b) {
+			var valA = a[addressSortColumn] || '';
+			var valB = b[addressSortColumn] || '';
+			
+			if (typeof valA === 'string' && typeof valB === 'string') {
+				valA = valA.toLowerCase();
+				valB = valB.toLowerCase();
+			}
+			
+			if (valA < valB) return addressSortDirection === 'asc' ? -1 : 1;
+			if (valA > valB) return addressSortDirection === 'asc' ? 1 : -1;
+			return 0;
+		});
+	}
+	
+	var pageSize = parseInt(document.getElementById('addresses-page-size').value) || 25;
+	var currentPage = parseInt(document.querySelector('#addresses-pagination .page-item.active .page-link').textContent) || 1;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(sorted.length / pageSize);
+	
+	updateAddressesPagination(currentPage, totalPages);
+	
+	if (currentPage > totalPages && totalPages > 0) {
+		currentPage = totalPages;
+		updateAddressesPagination(currentPage, totalPages);
+	}
+	
+	var start = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
+	var end = pageSize === 0 ? sorted.length : start + pageSize;
+	var pageItems = pageSize === 0 ? sorted : sorted.slice(start, end);
+	
+	var html = '';
+	pageItems.forEach(addr => {
+		html += '<tr data-id="' + addr.id + '">' +
+			'<td>' + escapeHtml(addr.street) + '</td>' +
+			'<td>' + escapeHtml(addr.building) + '</td>' +
+			'<td>' + (addr.cabinet || '-') + '</td>' +
+			'<td>' + (addr.corridor || '-') + '</td>' +
+			'<td>' + (addr.floor || '-') + '</td>' +
+			'<td>' + (addr.service_room || '-') + '</td>' +
+			'<td>' +
+				'<button class="btn btn-sm btn-edit edit-btn" onclick="editAddressRow(' + addr.id + ', this)">✏️</button>' +
+				'<button class="btn btn-sm btn-save edit-btn" onclick="saveAddressRow(' + addr.id + ', this)" style="display:none;">💾</button>' +
+				'<button class="btn btn-sm btn-cancel edit-btn" onclick="cancelAddressEdit(' + addr.id + ', this)" style="display:none;">❌</button>' +
+				'<button class="btn btn-sm btn-danger" onclick="deleteAddress(' + addr.id + ')">Удалить</button>' +
+			'</td>' +
+		'</tr>';
+	});
+	
+	addressesTable.innerHTML = html;
+	
+	var infoEl = document.getElementById('addresses-info');
+	if (infoEl) {
+		infoEl.textContent = 'Показано ' + (pageItems.length === 0 ? 0 : start + 1) + '-' + end + ' из ' + sorted.length + ' записей (всего: ' + addresses.length + ')';
+	}
+	
+	if (container) {
+		container.scrollTop = scrollTop;
+	}
+}
+
+// ==================== ФУНКЦИИ ДЛЯ СПРАВОЧНИКА СОТРУДНИКОВ ====================
+function filterEmployeesTable() {
+	filteredEmployees = employees.filter(function(emp) {
+		var inputs = document.querySelectorAll('#employees-table .search-row input');
+		for (var i = 0; i < inputs.length; i++) {
+			var query = inputs[i].value.toLowerCase().trim();
+			if (query) {
+				var value = '';
+				switch(i) {
+					case 0: value = emp.full_name || ''; break;
+					case 1: value = emp.short_name || ''; break;
+					case 2: value = emp.phone_city || ''; break;
+					case 3: value = emp.phone_internal || ''; break;
+					case 4: value = emp.full_address || ''; break;
+				}
+				if (value.toLowerCase().indexOf(query) === -1) {
+					return false;
+				}
+			}
+		}
+		return true;
+	});
+	
+	var pageSize = parseInt(document.getElementById('employees-page-size').value) || 25;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(filteredEmployees.length / pageSize);
+	updateEmployeesPagination(1, totalPages);
+	renderEmployeesTable();
+}
+
+function sortEmployeesTable(column) {
+	if (employeeSortColumn === column) {
+		employeeSortDirection = employeeSortDirection === 'asc' ? 'desc' : 'asc';
+	} else {
+		employeeSortColumn = column;
+		employeeSortDirection = 'asc';
+	}
+	renderEmployeesTable();
+}
+
+function updateEmployeesPagination(currentPage, totalPages) {
+	var pagination = document.getElementById('employees-pagination');
+	if (!pagination) return;
+	
+	pagination.innerHTML = 
+		'<li class="page-item ' + (currentPage === 1 ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeEmployeesPage(event, \'prev\')" aria-label="Previous">' +
+				'<span aria-hidden="true">&laquo;</span>' +
+			'</a>' +
+		'</li>';
+	
+	for (var i = 1; i <= totalPages && i <= 5; i++) {
+		pagination.innerHTML += 
+			'<li class="page-item ' + (i === currentPage ? 'active' : '') + '">' +
+				'<a class="page-link" href="#" onclick="changeEmployeesPage(event, ' + i + ')">' + i + '</a>' +
+			'</li>';
+	}
+	
+	pagination.innerHTML += 
+		'<li class="page-item ' + (currentPage === totalPages ? 'disabled' : '') + '">' +
+			'<a class="page-link" href="#" onclick="changeEmployeesPage(event, \'next\')" aria-label="Next">' +
+				'<span aria-hidden="true">&raquo;</span>' +
+			'</a>' +
+		'</li>';
+}
+
+function changeEmployeesPage(event, direction) {
+	if (event && event.preventDefault) {
+		event.preventDefault();
+	}
+	
+	var currentPage = parseInt(document.querySelector('#employees-pagination .page-item.active .page-link').textContent) || 1;
+	var pageSize = parseInt(document.getElementById('employees-page-size').value) || 25;
+	var totalItems = filteredEmployees.length > 0 ? filteredEmployees.length : employees.length;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(totalItems / pageSize);
+	
+	var newPage;
+	if (direction === 'prev') {
+		newPage = Math.max(1, currentPage - 1);
+	} else if (direction === 'next') {
+		newPage = Math.min(totalPages, currentPage + 1);
+	} else if (typeof direction === 'number') {
+		newPage = Math.max(1, Math.min(totalPages, direction));
+	}
+	
+	if (newPage) {
+		updateEmployeesPagination(newPage, totalPages);
+		renderEmployeesTable();
+	}
+}
+
+function renderEmployeesTable() {
+	if (!employeesTable) return;
+	
+	var container = document.querySelector('.scrollable-table-container');
+	var scrollTop = container ? container.scrollTop : 0;
+	
+	var dataToRender = filteredEmployees.length > 0 ? filteredEmployees : employees;
+	
+	if (dataToRender.length === 0) {
+		employeesTable.innerHTML = '<tr><td colspan=\"6\" class=\"empty-state\">Сотрудники не найдены</td></tr>';
+		var infoEl = document.getElementById('employees-info');
+		if (infoEl) infoEl.textContent = 'Показано 0 из ' + employees.length + ' записей';
+		
+		if (container) {
+			container.scrollTop = scrollTop;
+		}
+		return;
+	}
+	
+	var sorted = [...dataToRender];
+	if (employeeSortColumn) {
+		sorted.sort(function(a, b) {
+			var valA = a[employeeSortColumn] || '';
+			var valB = b[employeeSortColumn] || '';
+			
+			if (typeof valA === 'string' && typeof valB === 'string') {
+				valA = valA.toLowerCase();
+				valB = valB.toLowerCase();
+			}
+			
+			if (valA < valB) return employeeSortDirection === 'asc' ? -1 : 1;
+			if (valA > valB) return employeeSortDirection === 'asc' ? 1 : -1;
+			return 0;
+		});
+	}
+	
+	var pageSize = parseInt(document.getElementById('employees-page-size').value) || 25;
+	var currentPage = parseInt(document.querySelector('#employees-pagination .page-item.active .page-link').textContent) || 1;
+	var totalPages = pageSize === 0 ? 1 : Math.ceil(sorted.length / pageSize);
+	
+	updateEmployeesPagination(currentPage, totalPages);
+	
+	if (currentPage > totalPages && totalPages > 0) {
+		currentPage = totalPages;
+		updateEmployeesPagination(currentPage, totalPages);
+	}
+	
+	var start = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
+	var end = pageSize === 0 ? sorted.length : start + pageSize;
+	var pageItems = pageSize === 0 ? sorted : sorted.slice(start, end);
+	
+	var html = '';
+	pageItems.forEach(emp => {
+		html += '<tr data-id="' + emp.id + '">' +
+			'<td>' + escapeHtml(emp.full_name) + '</td>' +
+			'<td>' + (emp.short_name || '-') + '</td>' +
+			'<td>' + (emp.phone_city || '-') + '</td>' +
+			'<td>' + (emp.phone_internal || '-') + '</td>' +
+			'<td>' + escapeHtml(emp.full_address) + '</td>' +
+			'<td>' +
+				'<button class="btn btn-sm btn-edit edit-btn" onclick="editEmployeeRow(' + emp.id + ', this)">✏️</button>' +
+				'<button class="btn btn-sm btn-save edit-btn" onclick="saveEmployeeRow(' + emp.id + ', this)" style="display:none;">💾</button>' +
+				'<button class="btn btn-sm btn-cancel edit-btn" onclick="cancelEmployeeEdit(' + emp.id + ', this)" style="display:none;">❌</button>' +
+				'<button class="btn btn-sm btn-danger" onclick="deleteEmployee(' + emp.id + ')">Удалить</button>' +
+			'</td>' +
+		'</tr>';
+	});
+	
+	employeesTable.innerHTML = html;
+	
+	var infoEl = document.getElementById('employees-info');
+	if (infoEl) {
+		infoEl.textContent = 'Показано ' + (pageItems.length === 0 ? 0 : start + 1) + '-' + end + ' из ' + sorted.length + ' записей (всего: ' + employees.length + ')';
+	}
+	
+	if (container) {
+		container.scrollTop = scrollTop;
+	}
+}
+
 // Функция фильтрации таблицы АРМ
 function filterWorkstationsTable() {
 	filteredWorkstations = workstations.filter(function(ws) {
