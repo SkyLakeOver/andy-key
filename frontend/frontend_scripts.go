@@ -687,18 +687,6 @@ document.addEventListener('DOMContentLoaded', function() {
 		workstationsSearch.addEventListener('input', searchWorkstations);
 	}
 	
-	// Обработчики событий для вкладок
-	document.querySelectorAll('.nav-link[data-tab]').forEach(function(link) {
-		link.addEventListener('click', function(e) {
-			e.preventDefault();
-			switchTab(this.getAttribute('data-tab'));
-		});
-	});
-	
-	// Загружаем данные при первой загрузке страницы
-	// Начинаем с вкладки "Задачи" (активная по умолчанию)
-	// Но также загружаем данные для справочников, чтобы селекты были заполнены
-	// Загружаем адреса и сотрудников для всех форм
 	// ИСПРАВЛЕНО: загружаем все необходимые данные при старте
 	// Сначала адреса
 	fetch('/api/reference/addresses')
