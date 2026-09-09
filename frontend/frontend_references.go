@@ -192,12 +192,6 @@ document.addEventListener('DOMContentLoaded', function() {
     tables['network_mfps'] = new ReferenceTable({name: 'network_mfps', tableId: 'network-mfps-table-body', columns: ['name', 'ip_address', 'mac_address', 'model', 'location']});
     tables['ip_phones'] = new ReferenceTable({name: 'ip_phones', tableId: 'ip-phones-table-body', columns: ['name', 'ip_address', 'mac_address', 'model', 'phone_number']});
 
-    document.querySelectorAll('a[data-toggle="tab"]').forEach(tab => {
-        tab.addEventListener('click', function(event) {
-            event.preventDefault();
-        });
-    });
-
     loadReferencesData();
 });
 
