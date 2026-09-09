@@ -65,6 +65,9 @@ class ReferenceTable {
                 if (query) {
                     const columnName = this.columns[i];
                     const value = (item[columnName] || '').toString().toLowerCase();
+                    if (!value.includes(query)) {
+                        return false;
+                    }
                 }
             }
             return true;
