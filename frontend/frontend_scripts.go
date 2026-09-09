@@ -83,6 +83,15 @@ function showAlert(alertElement, message, type, autoHide) {
 
 // Функция переключения вкладок
 function switchTab(tabName) {
+	// Сбрасываем состояние предыдущей вкладки справочника перед переключением
+	var currentActive = document.querySelector('.nav-link.active[data-tab]');
+	if (currentActive) {
+		var currentTabId = currentActive.getAttribute('data-tab');
+		if (currentTabId && tables[currentTabId]) {
+			tables[currentTabId].resetStateOnly();
+		}
+	}
+
 	// Скрываем все вкладки
 	document.querySelectorAll('.tab-content').forEach(function(tab) {
 		tab.classList.remove('active');

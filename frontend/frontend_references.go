@@ -193,15 +193,8 @@ document.addEventListener('DOMContentLoaded', function() {
     tables['ip_phones'] = new ReferenceTable({name: 'ip_phones', tableId: 'ip-phones-table-body', columns: ['name', 'ip_address', 'mac_address', 'model', 'phone_number']});
 
     document.querySelectorAll('a[data-toggle="tab"]').forEach(tab => {
-        tab.addEventListener('shown.bs.tab', function(event) {
-            const previousTab = event.relatedTarget;
-            if (previousTab) {
-                const previousTabId = previousTab.getAttribute('href');
-                if (previousTabId) {
-                    const refName = previousTabId.replace('#references-', '');
-                    if (tables[refName]) tables[refName].resetStateOnly();
-                }
-            }
+        tab.addEventListener('click', function(event) {
+            event.preventDefault();
         });
     });
 
