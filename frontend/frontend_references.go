@@ -19,6 +19,7 @@ class ReferenceTable {
     }
 
     init() {
+        if (!this.tableElement) {
             console.error('Table element not found for:', this.name);
             return;
         }
