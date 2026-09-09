@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -15,18 +16,88 @@ import (
 )
 
 const (
-	DB_PATH                = "andy-key.db"
-	LOGS_DIR               = "logs"
+	DEFAULT_DB_PATH        = "data.db"
+	DEFAULT_LOGS_DIR       = "logs"
 	LOG_PREFIX             = "andy-key"
 	CURRENT_SCHEMA_VERSION = "0.0.4.1"
 )
 
 var (
-	db            *DB
-	panelLog      *os.File
-	remoteLog     *os.File
-	diagnosticLog *os.File
+	DB_PATH          string
+	LOGS_DIR         string
+	db               *DB
+	panelLog         *os.File
+	remoteLog        *os.File
+	diagnosticLog    *os.File
 )
+
+// loadConfig загружает конфигурацию из файла config.conf
+func loadConfig() error {
+	// Устанавливаем значения по умолчанию
+	DB_PATH = DEFAULT_DB_PATH
+	LOGS_DIR = DEFAULT_LOGS_DIR
+
+	configFile := "config.conf"
+	file, err := os.Open(configFile)
+	if err != nil {
+		// Если файл не найден, используем значения по умолчанию
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("ошибка открытия конфигурационного файла: %v", err)
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// Пропускаем пустые строки и комментарии
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+
+		switch key {
+		case "DB_PATH":
+			DB_PATH = value
+		case "LOGS_DIR":
+			LOGS_DIR = value
+		}
+	}
+
+	return scanner.Err()
+}
+
+// migrateOldDB проверяет наличие старых файлов БД и переименовывает их
+func migrateOldDB() error {
+	// Если текущий файл БД уже существует, ничего не делаем
+	if _, err := os.Stat(DB_PATH); err == nil {
+		return nil
+	}
+
+	// Список возможных старых имен файлов БД
+	oldNames := []string{"andy-key.db", "sshkage.db"}
+
+	for _, oldName := range oldNames {
+		if _, err := os.Stat(oldName); err == nil {
+			// Старый файл существует, переименовываем его
+			if err := os.Rename(oldName, DB_PATH); err != nil {
+				return fmt.Errorf("ошибка переименования %s в %s: %v", oldName, DB_PATH, err)
+			}
+			logPanel(fmt.Sprintf("База данных переименована: %s → %s", oldName, DB_PATH))
+			return nil
+		}
+	}
+
+	return nil
+}
 
 type DB struct {
 	crypto *Crypto
@@ -1103,6 +1174,16 @@ END`,
 
 // =============== ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ ===============
 func InitDB() error {
+	// Загружаем конфигурацию из файла
+	if err := loadConfig(); err != nil {
+		return fmt.Errorf("ошибка загрузки конфигурации: %v", err)
+	}
+	
+	// Проверяем наличие старых файлов БД и переименовываем их при необходимости
+	if err := migrateOldDB(); err != nil {
+		return fmt.Errorf("ошибка миграции старой БД: %v", err)
+	}
+	
 	var err error
 	crypto, err := NewCrypto()
 	if err != nil {
