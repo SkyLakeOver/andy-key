@@ -1,9 +1,11 @@
 package main
 
 import (
+	
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -22,6 +24,45 @@ var (
 	footerText   string // Глобальная переменная для хранения расшифрованного футера
 )
 
+// ==================== ИНИЦИАЛИЗАЦИЯ ШАБЛОНОВ ====================
+
+var (
+	templates *template.Template
+)
+
+func initTemplates() error {
+	// Создаём парсер шаблонов
+	templates = template.New("")
+	
+	// Проходим по всем HTML файлам в embedded FS
+	pattern := "templates/*.html"
+	matches, err := fs.Glob(frontend.TemplatesFS, pattern)
+	if err != nil {
+		return fmt.Errorf("ошибка поиска шаблонов: %w", err)
+	}
+	
+	if len(matches) == 0 {
+		return fmt.Errorf("шаблоны не найдены")
+	}
+	
+	// Парсим каждый шаблон
+	for _, match := range matches {
+		content, err := frontend.TemplatesFS.ReadFile(match)
+		if err != nil {
+			return fmt.Errorf("ошибка чтения шаблона %s: %w", match, err)
+		}
+		
+		name := strings.TrimSuffix(strings.TrimPrefix(match, "templates/"), ".html")
+		tmpl, err := templates.New(name).Parse(string(content))
+		if err != nil {
+			return fmt.Errorf("ошибка парсинга шаблона %s: %w", match, err)
+		}
+		templates = tmpl
+	}
+	
+	return nil
+}
+
 // ==================== ОБРАБОТЧИКИ ДЛЯ АВТОРИЗАЦИИ ====================
 
 func indexHandler(w http.ResponseWriter, r *http.Request) {
@@ -31,19 +72,28 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	
-	// Передаём футер и информацию о версии в шаблон
-	// Используем объединённый шаблон из пакета frontend
-	tmpl := template.Must(template.New("index").Parse(frontend.IndexHTML))
-	tmpl.Execute(w, map[string]string{
+	// Рендерим главный шаблон index
+	data := map[string]string{
 		"FooterText": footerText,
 		"AppVersion": CURRENT_SCHEMA_VERSION,
-	})
+	}
+	
+	if err := templates.ExecuteTemplate(w, "index", data); err != nil {
+		http.Error(w, "Ошибка рендеринга шаблона: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
-		tmpl := template.Must(template.New("login").Parse(loginHTML))
-		tmpl.Execute(w, nil)
+		data := map[string]string{
+			"FooterText": footerText,
+			"AppVersion": CURRENT_SCHEMA_VERSION,
+		}
+		if err := templates.ExecuteTemplate(w, "login", data); err != nil {
+			http.Error(w, "Ошибка рендеринга шаблона: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
 		return
 	}
 
@@ -2117,38 +2167,44 @@ func apiExecuteCommandHandler(w http.ResponseWriter, r *http.Request) {
 // ==================== НАСТРОЙКА МАРШРУТОВ ====================
 
 func setupRoutes() {
-	http.HandleFunc("/", indexHandler)
-	http.HandleFunc("/login", loginHandler)
-	http.HandleFunc("/logout", logoutHandler)
-	
-	// Справочники
-	http.HandleFunc("/api/reference/addresses", authMiddleware(apiReferenceAddressesHandler))
-	http.HandleFunc("/api/reference/addresses/", authMiddleware(apiReferenceAddressesHandler))
-	http.HandleFunc("/api/reference/employees", authMiddleware(apiReferenceEmployeesHandler))
-	http.HandleFunc("/api/reference/employees/", authMiddleware(apiReferenceEmployeesHandler))
-	http.HandleFunc("/api/reference/workstations", authMiddleware(apiReferenceWorkstationsHandler))
-	http.HandleFunc("/api/reference/workstations/", authMiddleware(apiReferenceWorkstationsHandler))
-	http.HandleFunc("/api/reference/hosts", authMiddleware(apiReferenceHostsHandler))
-	http.HandleFunc("/api/reference/hosts/", authMiddleware(apiReferenceHostsHandler))
-	http.HandleFunc("/api/reference/network-equipment", authMiddleware(apiReferenceNetworkEquipmentHandler))
-	http.HandleFunc("/api/reference/network-equipment/", authMiddleware(apiReferenceNetworkEquipmentHandler))
-	http.HandleFunc("/api/reference/network-mfps", authMiddleware(apiReferenceNetworkMFPsHandler))
-	http.HandleFunc("/api/reference/network-mfps/", authMiddleware(apiReferenceNetworkMFPsHandler))
-	http.HandleFunc("/api/reference/ip-phones", authMiddleware(apiReferenceIPPhonesHandler))
-	http.HandleFunc("/api/reference/ip-phones/", authMiddleware(apiReferenceIPPhonesHandler))
-	
-	// Существующие эндпоинты (обновлены для работы с новой схемой)
-	http.HandleFunc("/api/credentials", authMiddleware(apiCredentialsHandler))
-	http.HandleFunc("/api/credentials/", authMiddleware(apiCredentialsHandler))
-	http.HandleFunc("/api/scripts", authMiddleware(apiScriptsHandler))
-	http.HandleFunc("/api/scripts/", authMiddleware(apiScriptsHandler))
-	http.HandleFunc("/api/tasks", authMiddleware(apiTasksHandler))
-	http.HandleFunc("/api/tasks/", authMiddleware(apiTaskControlHandler))
-	http.HandleFunc("/api/logs", authMiddleware(apiLogsHandler))
-	http.HandleFunc("/api/execute-command", authMiddleware(apiExecuteCommandHandler))
+// Инициализация шаблонов
+if err := initTemplates(); err != nil {
+log.Fatalf("Ошибка инициализации шаблонов: %v", err)
 }
 
-// ==================== ГЛАВНАЯ ФУНКЦИЯ ====================
+// Статические файлы из embedded FS
+http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(frontend.StaticFS))))
+
+http.HandleFunc("/", indexHandler)
+http.HandleFunc("/login", loginHandler)
+http.HandleFunc("/logout", logoutHandler)
+
+// Справочники
+http.HandleFunc("/api/reference/addresses", authMiddleware(apiReferenceAddressesHandler))
+http.HandleFunc("/api/reference/addresses/", authMiddleware(apiReferenceAddressesHandler))
+http.HandleFunc("/api/reference/employees", authMiddleware(apiReferenceEmployeesHandler))
+http.HandleFunc("/api/reference/employees/", authMiddleware(apiReferenceEmployeesHandler))
+http.HandleFunc("/api/reference/workstations", authMiddleware(apiReferenceWorkstationsHandler))
+http.HandleFunc("/api/reference/workstations/", authMiddleware(apiReferenceWorkstationsHandler))
+http.HandleFunc("/api/reference/hosts", authMiddleware(apiReferenceHostsHandler))
+http.HandleFunc("/api/reference/hosts/", authMiddleware(apiReferenceHostsHandler))
+http.HandleFunc("/api/reference/network-equipment", authMiddleware(apiReferenceNetworkEquipmentHandler))
+http.HandleFunc("/api/reference/network-equipment/", authMiddleware(apiReferenceNetworkEquipmentHandler))
+http.HandleFunc("/api/reference/network-mfps", authMiddleware(apiReferenceNetworkMFPsHandler))
+http.HandleFunc("/api/reference/network-mfps/", authMiddleware(apiReferenceNetworkMFPsHandler))
+http.HandleFunc("/api/reference/ip-phones", authMiddleware(apiReferenceIPPhonesHandler))
+http.HandleFunc("/api/reference/ip-phones/", authMiddleware(apiReferenceIPPhonesHandler))
+
+// Существующие эндпоинты (обновлены для работы с новой схемой)
+http.HandleFunc("/api/credentials", authMiddleware(apiCredentialsHandler))
+http.HandleFunc("/api/credentials/", authMiddleware(apiCredentialsHandler))
+http.HandleFunc("/api/scripts", authMiddleware(apiScriptsHandler))
+http.HandleFunc("/api/scripts/", authMiddleware(apiScriptsHandler))
+http.HandleFunc("/api/tasks", authMiddleware(apiTasksHandler))
+http.HandleFunc("/api/tasks/", authMiddleware(apiTaskControlHandler))
+http.HandleFunc("/api/logs", authMiddleware(apiLogsHandler))
+http.HandleFunc("/api/execute-command", authMiddleware(apiExecuteCommandHandler))
+}
 
 func main() {
 	if err := InitDB(); err != nil {
