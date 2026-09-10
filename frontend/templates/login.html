@@ -154,18 +154,15 @@
                 footerText: '',
                 
                 init() {
-                    // Загрузка футера
-                    fetch('/api/footer')
-                        .then(res => res.text())
-                        .then(text => this.footerText = text)
-                        .catch(err => console.error('Ошибка загрузки футера:', err));
+                    // Футер уже передан через шаблон
+                    this.footerText = '{{.FooterText}}';
                 },
                 
                 submitLogin() {
                     this.loading = true;
                     this.error = '';
                     
-                    fetch('/api/login', {
+                    fetch('/login', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({
