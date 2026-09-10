@@ -158,7 +158,7 @@ function addressesPage() {
         },
         
         loadAddresses() {
-            fetch('/api/references/addresses')
+            fetch('/api/reference/addresses')
                 .then(res => res.json())
                 .then(data => {
                     this.addresses = data.map(addr => ({
@@ -166,7 +166,7 @@ function addressesPage() {
                         type: addr.cabinet ? 'cabinet' : addr.corridor ? 'corridor' : 'service',
                         typeLabel: addr.cabinet ? 'Кабинет' : addr.corridor ? 'Коридор' : 'Служебное',
                         value: addr.cabinet || addr.corridor || addr.service_room,
-                        fullAddress: this.formatFullAddress(addr)
+                        fullAddress: addr.full_address || this.formatFullAddress(addr)
                     }));
                 })
                 .catch(err => console.error('Ошибка загрузки адресов:', err));
@@ -204,13 +204,23 @@ function addressesPage() {
         },
         
         saveAddress() {
-            const url = this.showEditModal ? '/api/references/addresses/' + this.formData.id : '/api/references/addresses';
+            const url = this.showEditModal ? '/api/reference/addresses/' + this.formData.id : '/api/reference/addresses';
             const method = this.showEditModal ? 'PUT' : 'POST';
+            
+            // Формируем данные для отправки в соответствии с AddressRequest
+            const payload = {
+                street: this.formData.street,
+                building: this.formData.building,
+                cabinet: this.formData.addressType === 'cabinet' ? this.formData.cabinet : '',
+                corridor: this.formData.addressType === 'corridor' ? this.formData.corridor : '',
+                service_room: this.formData.addressType === 'service' ? this.formData.serviceRoom : '',
+                floor: this.formData.floor || 0
+            };
             
             fetch(url, {
                 method: method,
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(this.formData)
+                body: JSON.stringify(payload)
             })
             .then(res => res.json())
             .then(data => {
@@ -226,7 +236,7 @@ function addressesPage() {
         
         deleteAddress(id) {
             if (confirm('Вы уверены, что хотите удалить этот адрес?')) {
-                fetch('/api/references/addresses/' + id, {method: 'DELETE'})
+                fetch('/api/reference/addresses/' + id, {method: 'DELETE'})
                     .then(res => res.json())
                     .then(data => {
                         if (data.success) this.loadAddresses();
