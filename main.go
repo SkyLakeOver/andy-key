@@ -16,7 +16,7 @@ import (
 	"andy-key/frontend"
 )
 
-const DEFAULT_PORT = 9000
+const DEFAULT_PORT = 9000 // AK-v.2.1.1: Fixed static routing and MIME types
 
 var (
 	taskMutex    sync.Mutex
