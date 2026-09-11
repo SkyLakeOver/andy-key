@@ -28,19 +28,19 @@
                     <div class="nav-section-title">Администрирование</div>
                     <ul class="nav-menu">
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'tasks'" :class="{ active: activeTab === 'tasks' }" class="nav-link">Задачи</a>
+                            <a href="#" @click.prevent="activeTab = 'tasks'" hx-get="/api/content/tasks" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'tasks' }" class="nav-link">Задачи</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'credentials'" :class="{ active: activeTab === 'credentials' }" class="nav-link">Учётные записи SSH</a>
+                            <a href="#" @click.prevent="activeTab = 'credentials'" hx-get="/api/content/credentials" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'credentials' }" class="nav-link">Учётные записи SSH</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'scripts'" :class="{ active: activeTab === 'scripts' }" class="nav-link">Скрипты</a>
+                            <a href="#" @click.prevent="activeTab = 'scripts'" hx-get="/api/content/scripts" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'scripts' }" class="nav-link">Скрипты</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'bash-constructor'" :class="{ active: activeTab === 'bash-constructor' }" class="nav-link">BASH-конструктор</a>
+                            <a href="#" @click.prevent="activeTab = 'bash-constructor'" hx-get="/api/content/bash-constructor" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'bash-constructor' }" class="nav-link">BASH-конструктор</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'logs'" :class="{ active: activeTab === 'logs' }" class="nav-link">Журнал</a>
+                            <a href="#" @click.prevent="activeTab = 'logs'" hx-get="/api/content/logs" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'logs' }" class="nav-link">Журнал</a>
                         </li>
                     </ul>
                 </li>
@@ -49,25 +49,25 @@
                     <div class="nav-section-title">Справочники</div>
                     <ul class="nav-menu">
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'addresses'" :class="{ active: activeTab === 'addresses' }" class="nav-link">Адреса</a>
+                            <a href="#" @click.prevent="activeTab = 'addresses'" hx-get="/api/content/addresses" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'addresses' }" class="nav-link">Адреса</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'employees'" :class="{ active: activeTab === 'employees' }" class="nav-link">Сотрудники</a>
+                            <a href="#" @click.prevent="activeTab = 'employees'" hx-get="/api/content/employees" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'employees' }" class="nav-link">Сотрудники</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'workstations'" :class="{ active: activeTab === 'workstations' }" class="nav-link">АРМ</a>
+                            <a href="#" @click.prevent="activeTab = 'workstations'" hx-get="/api/content/workstations" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'workstations' }" class="nav-link">АРМ</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'hosts'" :class="{ active: activeTab === 'hosts' }" class="nav-link">Хосты</a>
+                            <a href="#" @click.prevent="activeTab = 'hosts'" hx-get="/api/content/hosts" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'hosts' }" class="nav-link">Хосты</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'network-equipment'" :class="{ active: activeTab === 'network-equipment' }" class="nav-link">Сетевое оборудование</a>
+                            <a href="#" @click.prevent="activeTab = 'network-equipment'" hx-get="/api/content/network-equipment" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'network-equipment' }" class="nav-link">Сетевое оборудование</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'network-mfps'" :class="{ active: activeTab === 'network-mfps' }" class="nav-link">Сетевая оргтехника</a>
+                            <a href="#" @click.prevent="activeTab = 'network-mfps'" hx-get="/api/content/network-mfps" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'network-mfps' }" class="nav-link">Сетевая оргтехника</a>
                         </li>
                         <li class="nav-item">
-                            <a href="#" @click.prevent="activeTab = 'ip-phones'" :class="{ active: activeTab === 'ip-phones' }" class="nav-link">IP телефоны</a>
+                            <a href="#" @click.prevent="activeTab = 'ip-phones'" hx-get="/api/content/ip-phones" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'ip-phones' }" class="nav-link">IP телефоны</a>
                         </li>
                     </ul>
                 </li>
