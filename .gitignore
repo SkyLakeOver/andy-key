@@ -1,1 +1,38 @@
-(db.go is a source code file, and there are no build artifacts, dependencies, or temporary files in the changes)
+```
+# Environment files
+.env
+.env.local
+*.env.*
+
+# SSH keys and security files
+andy-key
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Editors/IDE
+.vscode/
+.idea/
+
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+.env/
+target/
+build/
+dist/
+```

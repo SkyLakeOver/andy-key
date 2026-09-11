@@ -531,7 +531,7 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )`
 	
-	if _, err := ExecDB(addressesQuery); err != nil {
+	if err := ExecDB(addressesQuery); err != nil {
 		return fmt.Errorf("ошибка создания таблицы reference_addresses: %v", err)
 	}
 	logDiagnostic("Миграция 0.0.3→0.0.4: таблица reference_addresses создана")
@@ -547,7 +547,7 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 FOREIGN KEY (parent_id) REFERENCES reference_departments (id)
 )`
 	
-	if _, err := ExecDB(departmentsQuery); err != nil {
+	if err := ExecDB(departmentsQuery); err != nil {
 		return fmt.Errorf("ошибка создания таблицы reference_departments: %v", err)
 	}
 	logDiagnostic("Миграция 0.0.3→0.0.4: таблица reference_departments создана")
@@ -560,7 +560,7 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )`
 	
-	if _, err := ExecDB(positionsQuery); err != nil {
+	if err := ExecDB(positionsQuery); err != nil {
 		return fmt.Errorf("ошибка создания таблицы reference_positions: %v", err)
 	}
 	logDiagnostic("Миграция 0.0.3→0.0.4: таблица reference_positions создана")
