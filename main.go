@@ -31,10 +31,21 @@ var (
 )
 
 func initTemplates() error {
-	// Создаём парсер шаблонов
-	templates = template.New("")
+	// Создаём парсер шаблонов с функцией dict
+	funcMap := template.FuncMap{
+		"dict": func(values ...interface{}) map[string]interface{} {
+			dict := make(map[string]interface{})
+			for i := 0; i < len(values); i += 2 {
+				if key, ok := values[i].(string); ok {
+					dict[key] = values[i+1]
+				}
+			}
+			return dict
+		},
+	}
+	templates = template.New("").Funcs(funcMap)
 	
-	// Проходим по всем HTML файлам в embedded FS
+	// Проходим по всем HTML файлам в embedded FS (основные шаблоны)
 	pattern := "templates/*.html"
 	matches, err := fs.Glob(frontend.TemplatesFS, pattern)
 	if err != nil {
@@ -45,7 +56,7 @@ func initTemplates() error {
 		return fmt.Errorf("шаблоны не найдены")
 	}
 	
-	// Парсим каждый шаблон
+	// Парсим каждый основной шаблон
 	for _, match := range matches {
 		content, err := frontend.TemplatesFS.ReadFile(match)
 		if err != nil {
@@ -58,6 +69,25 @@ func initTemplates() error {
 			return fmt.Errorf("ошибка парсинга шаблона %s: %w", match, err)
 		}
 		templates = tmpl
+	}
+	
+	// Дополнительно загружаем компоненты из подпапки components
+	componentPattern := "templates/components/*.html"
+	componentMatches, err := fs.Glob(frontend.TemplatesFS, componentPattern)
+	if err != nil {
+		return fmt.Errorf("ошибка поиска компонентов: %w", err)
+	}
+	
+	for _, match := range componentMatches {
+		content, err := frontend.TemplatesFS.ReadFile(match)
+		if err != nil {
+			return fmt.Errorf("ошибка чтения компонента %s: %w", match, err)
+		}
+		
+		_, err = templates.Parse(string(content))
+		if err != nil {
+			return fmt.Errorf("ошибка парсинга компонента %s: %w", match, err)
+		}
 	}
 	
 	return nil
@@ -133,8 +163,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 	})
 
+	// Возвращаем URL для редиректа вместо простого success
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	json.NewEncoder(w).Encode(map[string]string{"redirect": "/"})
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
