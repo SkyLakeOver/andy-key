@@ -31,7 +31,7 @@ var (
 )
 
 func initTemplates() error {
-	// Создаём парсер шаблонов с функцией dict
+	// Создаём парсер шаблонов с функциями dict и default
 	funcMap := template.FuncMap{
 		"dict": func(values ...interface{}) map[string]interface{} {
 			dict := make(map[string]interface{})
@@ -41,6 +41,12 @@ func initTemplates() error {
 				}
 			}
 			return dict
+		},
+		"default": func(def, val interface{}) interface{} {
+			if val == nil || val == "" {
+				return def
+			}
+			return val
 		},
 	}
 	templates = template.New("").Funcs(funcMap)
