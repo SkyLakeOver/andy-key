@@ -539,6 +539,7 @@ Alpine.data('ipPhonesPage', () => ({
 
 // Основной компонент приложения
 Alpine.data('app', () => ({
+    
 
         activeTab: 'tasks',
         currentUser: '',
