@@ -2,6 +2,20 @@
 # Templates and temporary files
 *.tmp
 *.swp
+# Build artifacts
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+
+# Dependencies
+vendor/
+
+# Logs
+*.log
 
 # Environment files
 .env
@@ -21,6 +35,16 @@ target/
 
 # Logs
 *.log
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Editors
 .vscode/
