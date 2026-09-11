@@ -1,75 +1,86 @@
 // Основное приложение Alpine.js для andy-key v2.2.0
 
+document.addEventListener('alpine:init', () => {
+
 // Компонент для страницы задач
-function tasksPage() {
-    return {
-        searchQuery: '',
-        filterStatus: 'all',
-        showAddModal: false,
-        formData: {
-            title: '',
-            description: '',
-            status: 'new',
-            assignee: ''
-        },
-        tasks: [],
-        
-        init() {
-            this.loadTasks();
-        },
-        
-        loadTasks() {
-            fetch('/api/tasks')
-                .then(response => response.json())
-                .then(data => {
-                    this.tasks = data || [];
-                })
-                .catch(err => console.error('Ошибка загрузки задач:', err));
-        },
-        
-        get filteredTasks() {
-            return this.tasks.filter(task => {
-                const matchesSearch = task.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-                                     task.description.toLowerCase().includes(this.searchQuery.toLowerCase());
-                const matchesStatus = this.filterStatus === 'all' || task.status === this.filterStatus;
-                return matchesSearch && matchesStatus;
-            });
-        },
-        
-        openAddModal() {
-            this.formData = { title: '', description: '', status: 'new', assignee: '' };
-            this.showAddModal = true;
-        },
-        
-        closeAddModal() {
-            this.showAddModal = false;
-        },
-        
-        submitTask() {
-            fetch('/api/tasks', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(this.formData)
+Alpine.data('tasksPage', () => ({
+    searchQuery: '',
+    filterStatus: 'all',
+    showAddModal: false,
+    formData: {
+        title: '',
+        description: '',
+        status: 'new',
+        assignee: '',
+        script_id: ''
+    },
+    tasks: [],
+    scripts: [],
+
+    init() {
+        this.loadTasks();
+        this.loadScripts();
+    },
+
+    loadTasks() {
+        fetch('/api/tasks')
+            .then(response => response.json())
+            .then(data => {
+                this.tasks = data || [];
             })
-            .then(response => {
-                if (response.ok) {
-                    this.closeAddModal();
-                    this.loadTasks();
-                } else {
-                    alert('Ошибка при создании задачи');
-                }
+            .catch(err => console.error('Ошибка загрузки задач:', err));
+    },
+
+    loadScripts() {
+        fetch('/api/scripts')
+            .then(response => response.json())
+            .then(data => {
+                this.scripts = data || [];
             })
-            .catch(err => {
-                console.error('Ошибка:', err);
+            .catch(err => console.error('Ошибка загрузки скриптов:', err));
+    },
+
+    get filteredTasks() {
+        return this.tasks.filter(task => {
+            const matchesSearch = task.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+                                 task.description.toLowerCase().includes(this.searchQuery.toLowerCase());
+            const matchesStatus = this.filterStatus === 'all' || task.status === this.filterStatus;
+            return matchesSearch && matchesStatus;
+        });
+    },
+
+    openAddModal() {
+        this.formData = { title: '', description: '', status: 'new', assignee: '', script_id: '' };
+        this.showAddModal = true;
+    },
+
+    closeAddModal() {
+        this.showAddModal = false;
+    },
+
+    submitTask() {
+        fetch('/api/tasks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(this.formData)
+        })
+        .then(response => {
+            if (response.ok) {
+                this.closeAddModal();
+                this.loadTasks();
+            } else {
                 alert('Ошибка при создании задачи');
-            });
-        }
+            }
+        })
+        .catch(err => {
+            console.error('Ошибка:', err);
+            alert('Ошибка при создании задачи');
+        });
     }
-}
+}));
 
 // Компонент для страницы сотрудников
-function employeesPage() {
-    return {
+Alpine.data('employeesPage', () => ({
         searchQuery: '',
         showAddModal: false,
         formData: {
@@ -131,11 +142,10 @@ function employeesPage() {
             });
         }
     }
-}
+}));
 
 // Компонент для страницы рабочих мест
-function workstationsPage() {
-    return {
+Alpine.data('workstationsPage', () => ({
         searchQuery: '',
         showAddModal: false,
         formData: {
@@ -197,11 +207,11 @@ function workstationsPage() {
             });
         }
     }
-}
+}));
 
 // Компонент для страницы адресов
-function addressesPage() {
-    return {
+Alpine.data('addressesPage', () => ({
+
         searchQuery: '',
         showAddModal: false,
         formData: {
@@ -259,11 +269,11 @@ function addressesPage() {
             });
         }
     }
-}
+}));
 
 // Компонент для страницы хостов
-function hostsPage() {
-    return {
+Alpine.data('hostsPage', () => ({
+
         searchQuery: '',
         showAddModal: false,
         formData: {
@@ -325,11 +335,11 @@ function hostsPage() {
             });
         }
     }
-}
+}));
 
 // Компонент для страницы сетевого оборудования
-function networkEquipmentPage() {
-    return {
+Alpine.data('networkEquipmentPage', () => ({
+
         searchQuery: '',
         showAddModal: false,
         formData: {
@@ -392,11 +402,11 @@ function networkEquipmentPage() {
             });
         }
     }
-}
+}));
 
 // Компонент для страницы сетевых МФУ
-function networkMfpsPage() {
-    return {
+Alpine.data('networkMfpsPage', () => ({
+
         searchQuery: '',
         showAddModal: false,
         formData: {
@@ -458,11 +468,11 @@ function networkMfpsPage() {
             });
         }
     }
-}
+}));
 
 // Компонент для страницы IP телефонов
-function ipPhonesPage() {
-    return {
+Alpine.data('ipPhonesPage', () => ({
+
         searchQuery: '',
         showAddModal: false,
         formData: {
@@ -525,11 +535,11 @@ function ipPhonesPage() {
             });
         }
     }
-}
+}));
 
 // Основной компонент приложения
-function app() {
-    return {
+Alpine.data('app', () => ({
+
         activeTab: 'tasks',
         currentUser: '',
         pageTitle: 'Задачи',
@@ -587,11 +597,11 @@ function app() {
             }
         }
     }
-}
+}));
 
 // Компонент для формы входа
-function loginForm() {
-    return {
+Alpine.data('loginForm', () => ({
+
         username: '',
         password: '',
         error: '',
@@ -619,4 +629,6 @@ function loginForm() {
             });
         }
     }
-}
+}));
+
+});
