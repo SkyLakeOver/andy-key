@@ -248,8 +248,12 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 
 // Автоопределение версии БД по наличию ключевых таблиц и колонок
 func detectDBVersion() string {
-	// Проверяем наличие таблицы из версии 0.0.4
+	// Проверяем наличие таблицы из версии 0.0.4.1 (platform_settings с footer_text)
 	if exists, _ := tableExists("reference_addresses"); exists {
+		// Дополнительная проверка: наличие platform_settings для определения 0.0.4.1
+		if exists, _ := tableExists("platform_settings"); exists {
+			return "0.0.4.1"
+		}
 		return "0.0.4"
 	}
 	// Проверяем наличие таблицы из версии 0.0.3
@@ -281,7 +285,7 @@ func migrateDB(fromVersion, toVersion string) error {
 	logDiagnostic(fmt.Sprintf("Начало миграции: %s → %s", fromVersion, toVersion))
 	
 	// Определяем последовательность миграций
-	versions := []string{"0.0.0", "0.0.1", "0.0.2", "0.0.3", "0.0.4"}
+	versions := []string{"0.0.0", "0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.4.1"}
 	startIdx := -1
 	endIdx := -1
 	for i, v := range versions {
@@ -313,6 +317,8 @@ func migrateDB(fromVersion, toVersion string) error {
 			err = migrate_0_0_2_to_0_0_3()
 		case "0.0.4":
 			err = migrate_0_0_3_to_0_0_4()
+		case "0.0.4.1":
+			err = migrate_0_0_4_to_0_0_4_1()
 		default:
 			return fmt.Errorf("неизвестная версия миграции: %s", next)
 		}
