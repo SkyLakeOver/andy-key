@@ -18,8 +18,9 @@ var StaticFS embed.FS
 // StaticFileServer возвращает http.Handler для раздачи статических файлов с правильными MIME-типами
 func StaticFileServer(root http.FileSystem) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Убираем префикс /static/ из пути
-		path := strings.TrimPrefix(r.URL.Path, "/static/")
+		// Путь внутри embedded FS включает "static/", поэтому не убираем префикс
+		// URL: /static/css/main.css -> файл в embed: static/css/main.css
+		path := strings.TrimPrefix(r.URL.Path, "/")
 
 		// Определяем MIME-тип по расширению файла
 		ext := filepath.Ext(path)
