@@ -1,15 +1,5 @@
 ```
-# Executables
-*.exe
-
-# Logs
-*.log
-logs/
-
-# Database
-*.db
-
-# Temporary and key files
-*.tmp
-*.key
+# Build artifacts
+static/css/main.css
+static/js/alpine.min.js
 ```
