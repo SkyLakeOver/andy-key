@@ -1,86 +1,107 @@
 // Основное приложение Alpine.js для andy-key v2.2.0
 
+// Глобальное состояние приложения
 document.addEventListener('alpine:init', () => {
+    Alpine.data('app', () => ({
+        activeTab: 'tasks',
+        pageTitle: 'Задачи',
+        currentUser: '',
+        
+        init() {
+            // Загрузка текущего пользователя
+            fetch('/api/user')
+                .then(response => response.json())
+                .then(data => {
+                    this.currentUser = data.username || 'Гость';
+                })
+                .catch(err => console.error('Ошибка загрузки пользователя:', err));
+        },
+        
+        setActiveTab(tab, title) {
+            this.activeTab = tab;
+            this.pageTitle = title;
+        }
+    }));
 
-// Компонент для страницы задач
-Alpine.data('tasksPage', () => ({
-    searchQuery: '',
-    filterStatus: 'all',
-    showAddModal: false,
-    formData: {
-        title: '',
-        description: '',
-        status: 'new',
-        assignee: '',
-        script_id: ''
-    },
-    tasks: [],
-    scripts: [],
+    // Компонент для страницы задач
+    Alpine.data('tasksPage', () => ({
+        searchQuery: '',
+        filterStatus: 'all',
+        showAddModal: false,
+        formData: {
+            title: '',
+            description: '',
+            status: 'new',
+            assignee: '',
+            script_id: ''
+        },
+        tasks: [],
+        scripts: [],
 
-    init() {
-        this.loadTasks();
-        this.loadScripts();
-    },
+        init() {
+            this.loadTasks();
+            this.loadScripts();
+        },
 
-    loadTasks() {
-        fetch('/api/tasks')
-            .then(response => response.json())
-            .then(data => {
-                this.tasks = data || [];
+        loadTasks() {
+            fetch('/api/tasks')
+                .then(response => response.json())
+                .then(data => {
+                    this.tasks = data || [];
+                })
+                .catch(err => console.error('Ошибка загрузки задач:', err));
+        },
+
+        loadScripts() {
+            fetch('/api/scripts')
+                .then(response => response.json())
+                .then(data => {
+                    this.scripts = data || [];
+                })
+                .catch(err => console.error('Ошибка загрузки скриптов:', err));
+        },
+
+        get filteredTasks() {
+            return this.tasks.filter(task => {
+                const matchesSearch = task.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+                                     task.description.toLowerCase().includes(this.searchQuery.toLowerCase());
+                const matchesStatus = this.filterStatus === 'all' || task.status === this.filterStatus;
+                return matchesSearch && matchesStatus;
+            });
+        },
+
+        openAddModal() {
+            this.formData = { title: '', description: '', status: 'new', assignee: '', script_id: '' };
+            this.showAddModal = true;
+        },
+
+        closeAddModal() {
+            this.showAddModal = false;
+        },
+
+        submitTask() {
+            fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.formData)
             })
-            .catch(err => console.error('Ошибка загрузки задач:', err));
-    },
-
-    loadScripts() {
-        fetch('/api/scripts')
-            .then(response => response.json())
-            .then(data => {
-                this.scripts = data || [];
+            .then(response => {
+                if (response.ok) {
+                    this.closeAddModal();
+                    this.loadTasks();
+                } else {
+                    alert('Ошибка при создании задачи');
+                }
             })
-            .catch(err => console.error('Ошибка загрузки скриптов:', err));
-    },
-
-    get filteredTasks() {
-        return this.tasks.filter(task => {
-            const matchesSearch = task.title.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
-                                 task.description.toLowerCase().includes(this.searchQuery.toLowerCase());
-            const matchesStatus = this.filterStatus === 'all' || task.status === this.filterStatus;
-            return matchesSearch && matchesStatus;
-        });
-    },
-
-    openAddModal() {
-        this.formData = { title: '', description: '', status: 'new', assignee: '', script_id: '' };
-        this.showAddModal = true;
-    },
-
-    closeAddModal() {
-        this.showAddModal = false;
-    },
-
-    submitTask() {
-        fetch('/api/tasks', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(this.formData)
-        })
-        .then(response => {
-            if (response.ok) {
-                this.closeAddModal();
-                this.loadTasks();
-            } else {
+            .catch(err => {
+                console.error('Ошибка:', err);
                 alert('Ошибка при создании задачи');
-            }
-        })
-        .catch(err => {
-            console.error('Ошибка:', err);
-            alert('Ошибка при создании задачи');
-        });
-    }
-}));
+            });
+        }
+    }));
 
-// Компонент для страницы сотрудников
-Alpine.data('employeesPage', () => ({
+    // Компонент для страницы сотрудников
+    Alpine.data('employeesPage', () => ({
         searchQuery: '',
         showAddModal: false,
         formData: {
@@ -141,8 +162,7 @@ Alpine.data('employeesPage', () => ({
                 alert('Ошибка при создании сотрудника');
             });
         }
-    }
-}));
+    }));
 
 // Компонент для страницы рабочих мест
 Alpine.data('workstationsPage', () => ({
