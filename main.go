@@ -200,6 +200,38 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// ==================== ОБРАБОТЧИК ДЛЯ ИНФОРМАЦИИ О ПОЛЬЗОВАТЕЛЕ ====================
+
+func apiUserHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	cookie, err := r.Cookie("session_token")
+	if err != nil || !CheckSession(cookie.Value) {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Требуется аутентификация"})
+		return
+	}
+
+	// Получаем информацию о пользователе из БД по токену сессии
+	escapedToken := strings.ReplaceAll(cookie.Value, "'", "''")
+	rows, err := QueryDB(fmt.Sprintf(`
+		SELECT u.username
+		FROM admin_users u
+		JOIN sessions s ON u.id = s.user_id
+		WHERE s.token = '%s' AND s.expires_at > DATETIME('now')
+	`, escapedToken))
+
+	if err != nil || len(rows) == 0 {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Сессия не найдена"})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{
+		"username": rows[0]["username"],
+	})
+}
+
 // ==================== ОБРАБОТЧИКИ ДЛЯ ЖУРНАЛА ====================
 
 func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
@@ -2242,6 +2274,7 @@ http.HandleFunc("/api/tasks", authMiddleware(apiTasksHandler))
 http.HandleFunc("/api/tasks/", authMiddleware(apiTaskControlHandler))
 http.HandleFunc("/api/logs", authMiddleware(apiLogsHandler))
 http.HandleFunc("/api/execute-command", authMiddleware(apiExecuteCommandHandler))
+http.HandleFunc("/api/user", authMiddleware(apiUserHandler))
 }
 
 func main() {
