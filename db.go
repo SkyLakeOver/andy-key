@@ -528,9 +528,67 @@ corridor TEXT,
 floor INTEGER CHECK (floor BETWEEN 1 AND 5),
 service_room TEXT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)`
+	
+	if _, err := ExecDB(addressesQuery); err != nil {
+		return fmt.Errorf("ошибка создания таблицы reference_addresses: %v", err)
+	}
+	logDiagnostic("Миграция 0.0.3→0.0.4: таблица reference_addresses создана")
+	
+	// Создаем таблицу подразделений
+	departmentsQuery := `CREATE TABLE IF NOT EXISTS reference_departments (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+name TEXT NOT NULL UNIQUE,
+short_name TEXT,
+parent_id INTEGER,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (parent_id) REFERENCES reference_departments (id)
+)`
+	
+	if _, err := ExecDB(departmentsQuery); err != nil {
+		return fmt.Errorf("ошибка создания таблицы reference_departments: %v", err)
+	}
+	logDiagnostic("Миграция 0.0.3→0.0.4: таблица reference_departments создана")
+	
+	// Создаем таблицу должностей
+	positionsQuery := `CREATE TABLE IF NOT EXISTS reference_positions (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+name TEXT NOT NULL UNIQUE,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)`
+	
+	if _, err := ExecDB(positionsQuery); err != nil {
+		return fmt.Errorf("ошибка создания таблицы reference_positions: %v", err)
+	}
+	logDiagnostic("Миграция 0.0.3→0.0.4: таблица reference_positions создана")
+	
+	// Обновляем версию схемы
+	escapedVersion := strings.ReplaceAll("0.0.4", "'", "''")
+	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
+	
+	return nil
+}
+
+// Миграция 0.0.4 → 0.0.4.1: проверка целостности данных (техническая версия)
+func migrate_0_0_4_to_0_0_4_1() error {
+	logDiagnostic("Миграция 0.0.4→0.0.4.1: проверка целостности данных")
+	// Эта миграция не требует изменений структуры БД,
+	// так как таблица platform_settings уже была создана ранее.
+	// Просто обновляем номер версии.
+	escapedVersion := strings.ReplaceAll("0.0.4.1", "'", "''")
+	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
+	logDiagnostic("Миграция 0.0.4→0.0.4.1: завершена успешно")
+	return nil
+}
+
+// Старый код миграции 0.0.3 → 0.0.4 (оставлен для совместимости, но теперь не используется)
+/*
 UNIQUE(street, building, cabinet, corridor, service_room)
 )`
-	if err := ExecDB(addressesQuery); err != nil {
+	if _, err := ExecDB(addressesQuery); err != nil {
 		return fmt.Errorf("ошибка создания таблицы адресов: %v", err)
 	}
 	logPanel("Миграция 0.0.3→0.0.4: создана таблица адресов")
@@ -699,6 +757,7 @@ WHERE h.enabled = 1
 	
 	return nil
 }
+*/
 
 // Сравнение версий в формате "X.Y.Z"
 func compareVersions(v1, v2 string) int {
