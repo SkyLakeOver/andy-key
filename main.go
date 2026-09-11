@@ -120,6 +120,73 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// contentSectionHandler обрабатывает запросы контента для различных разделов
+func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("session_token")
+	if err != nil || !CheckSession(cookie.Value) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Получаем имя раздела из пути /api/content/{section}
+	section := strings.TrimPrefix(r.URL.Path, "/api/content/")
+	if section == "" {
+		section = "tasks" // по умолчанию
+	}
+
+	// Маппинг имен разделов на шаблоны
+	templateMap := map[string]string{
+		"tasks":             "tasks",
+		"credentials":       "credentials",
+		"scripts":           "scripts",
+		"bash-constructor":  "bash_constructor",
+		"logs":              "logs",
+		"addresses":         "addresses",
+		"employees":         "employees",
+		"workstations":      "workstations",
+		"hosts":             "hosts",
+		"network-equipment": "network_equipment",
+		"network-mfps":      "network_mfps",
+		"ip-phones":         "ip_phones",
+	}
+
+	templateName, exists := templateMap[section]
+	if !exists {
+		http.Error(w, "Раздел не найден: "+section, http.StatusNotFound)
+		return
+	}
+
+	// Проверяем, это HTMX-запрос или обычный
+	isHtmx := r.Header.Get("HX-Request") == "true"
+
+	if isHtmx {
+		// Для HTMX рендерим только фрагмент контента (без layout)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		
+		// Пробуем рендерить шаблон, если его нет - выводим заглушку
+		err := templates.ExecuteTemplate(w, templateName, nil)
+		if err != nil {
+			// Шаблон не найден, выводим временную заглушку
+			fmt.Fprintf(w, `<div class="placeholder-content">
+				<h2>Раздел "%s"</h2>
+				<p class="text-gray-500">Контент в разработке. Шаблон '%s.html' отсутствует.</p>
+			</div>`, section, templateName)
+			return
+		}
+	} else {
+		// Для обычного запроса рендерим полную страницу с layout
+		data := map[string]interface{}{
+			"Section":    section,
+			"FooterText": footerText,
+			"AppVersion": CURRENT_SCHEMA_VERSION,
+		}
+		if err := templates.ExecuteTemplate(w, "index", data); err != nil {
+			http.Error(w, "Ошибка рендеринга: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+}
+
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == "GET" {
 		data := map[string]string{
@@ -2275,6 +2342,9 @@ http.HandleFunc("/api/tasks/", authMiddleware(apiTaskControlHandler))
 http.HandleFunc("/api/logs", authMiddleware(apiLogsHandler))
 http.HandleFunc("/api/execute-command", authMiddleware(apiExecuteCommandHandler))
 http.HandleFunc("/api/user", authMiddleware(apiUserHandler))
+
+// Обработчик для загрузки контента разделов через HTMX
+http.HandleFunc("/api/content/", authMiddleware(contentSectionHandler))
 }
 
 func main() {
