@@ -133,8 +133,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 	})
 
+	// Возвращаем URL для редиректа вместо простого success
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	json.NewEncoder(w).Encode(map[string]string{"redirect": "/"})
 }
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
