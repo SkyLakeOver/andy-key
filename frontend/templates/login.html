@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/static/css/main.css">
     
     <style>
+        [x-cloak] { display: none !important; }
         body {
             margin: 0;
             padding: 0;
@@ -133,8 +134,8 @@
             </div>
             
             <button type="submit" class="login-btn" :disabled="loading">
-                <span x-show="!loading">Войти</span>
-                <span x-show="loading">Вход...</span>
+                <span x-show="!loading" x-cloak>Войти</span>
+                <span x-show="loading" x-cloak>Вход...</span>
             </button>
         </form>
         
