@@ -1,5 +1,4 @@
-```
 # Build artifacts
-static/css/main.css
-static/js/alpine.min.js
-```
+*.exe
+*.db
+*.key

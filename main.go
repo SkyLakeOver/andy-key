@@ -2211,7 +2211,7 @@ log.Fatalf("Ошибка инициализации шаблонов: %v", err)
 }
 
 // Статические файлы из embedded FS
-http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(frontend.StaticFS))))
+http.Handle("/static/", frontend.StaticFileServer(http.FS(frontend.StaticFS)))
 
 http.HandleFunc("/", indexHandler)
 http.HandleFunc("/login", loginHandler)
