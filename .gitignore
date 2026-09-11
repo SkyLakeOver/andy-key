@@ -1,38 +1,67 @@
 ```
-# Environment files
+# Compiled and binary files
+*.o
+*.obj
+*.out
+
+# Dependencies
+vendor/
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
 .env
 .env.local
 *.env.*
 
-# SSH keys and security files
-andy-key
-
-# Logs
-*.log
-
-# Temporary files
-*.tmp
-*.swp
-
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Editors/IDE
+# Editors
 .vscode/
 .idea/
+*.swp
 
-# Dependencies
-node_modules/
+# Build artifacts
+dist/
+build/
+target/
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.Python
-venv/
-.venv/
-.env/
-target/
-build/
-dist/
+
+# Go
+*.a
+*.so
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```
