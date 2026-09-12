@@ -480,16 +480,29 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 		escapedCabinet := strings.ReplaceAll(req.Cabinet, "'", "''")
 		escapedCorridor := strings.ReplaceAll(req.Corridor, "'", "''")
 		escapedServiceRoom := strings.ReplaceAll(req.ServiceRoom, "'", "''")
-		escapedGarage := strings.ReplaceAll(req.GarageNumber, "'", "''")
+		
+		// ВНИМАНИЕ: В схеме БД (db.go) НЕТ колонки garage_number.
+		// Есть только: street, building, cabinet, corridor, floor, service_room.
+		// Если выбран подтип "garage", то номер гаража сохраняем в поле cabinet,
+		// а в service_room пишем "garage".
+		finalCabinet := req.Cabinet
+		finalServiceRoom := req.ServiceRoom
+		
+		if req.ServiceRoom == "garage" {
+			// Если это гараж, то Cabinet - это номер гаража, ServiceRoom - "garage"
+			finalCabinet = req.Cabinet 
+			finalServiceRoom = "garage"
+		}
+
 		floorStr := "NULL"
 		if req.Floor != "" {
 			floorStr = fmt.Sprintf("'%s'", strings.ReplaceAll(req.Floor, "'", "''"))
 		}
 
 		query := fmt.Sprintf(`
-			INSERT INTO reference_addresses (street, building, cabinet, corridor, floor, service_room, garage_number)
-			VALUES ('%s', '%s', '%s', '%s', %s, '%s', '%s')
-		`, escapedStreet, escapedBuilding, escapedCabinet, escapedCorridor, floorStr, escapedServiceRoom, escapedGarage)
+			INSERT INTO reference_addresses (street, building, cabinet, corridor, floor, service_room)
+			VALUES ('%s', '%s', '%s', '%s', %s, '%s')
+		`, escapedStreet, escapedBuilding, finalCabinet, escapedCorridor, floorStr, finalServiceRoom)
 
 		if err := ExecDB(query); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint") {
@@ -502,7 +515,7 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		logPanel("Добавлен адрес: " + FormatFullAddress(req.Street, req.Building, req.Cabinet, req.Corridor, req.ServiceRoom, req.GarageNumber, req.Floor))
+		logPanel("Добавлен адрес: " + FormatFullAddress(req.Street, req.Building, finalCabinet, req.Corridor, finalServiceRoom, "", req.Floor))
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 
 	case "PUT":
@@ -531,9 +544,18 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 		// Экранирование значений
 		escapedStreet := strings.ReplaceAll(req.Street, "'", "''")
 		escapedBuilding := strings.ReplaceAll(req.Building, "'", "''")
-		escapedCabinet := strings.ReplaceAll(req.Cabinet, "'", "''")
+		
+		// Логика для гаража (аналогично INSERT)
+		finalCabinet := req.Cabinet
+		finalServiceRoom := req.ServiceRoom
+		
+		if req.ServiceRoom == "garage" {
+			finalCabinet = req.Cabinet
+			finalServiceRoom = "garage"
+		}
+		
 		escapedCorridor := strings.ReplaceAll(req.Corridor, "'", "''")
-		escapedServiceRoom := strings.ReplaceAll(req.ServiceRoom, "'", "''")
+		
 		floorStr := "NULL"
 		if req.Floor != "" {
 			floorStr = fmt.Sprintf("'%s'", strings.ReplaceAll(req.Floor, "'", "''"))
@@ -543,7 +565,7 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			UPDATE reference_addresses
 			SET street = '%s', building = '%s', cabinet = '%s', corridor = '%s', floor = %s, service_room = '%s'
 			WHERE id = %d
-		`, escapedStreet, escapedBuilding, escapedCabinet, escapedCorridor, floorStr, escapedServiceRoom, id)
+		`, escapedStreet, escapedBuilding, finalCabinet, escapedCorridor, floorStr, finalServiceRoom, id)
 
 		if err := ExecDB(query); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
