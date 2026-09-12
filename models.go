@@ -11,7 +11,7 @@ type AddressRequest struct {
 	Building     string `json:"building" validate:"required"`
 	Cabinet      string `json:"cabinet"`
 	Corridor     string `json:"corridor"`
-	Floor        int    `json:"floor"`
+	Floor        string `json:"floor"`
 	ServiceRoom  string `json:"service_room"`
 }
 
@@ -41,13 +41,17 @@ func (a AddressRequest) Validate() error {
 	}
 
 	// Если выбран коридор, этаж обязателен
-	if hasCorridor && a.Floor == 0 {
+	if hasCorridor && a.Floor == "" {
 		return fmt.Errorf("при выборе коридора необходимо указать этаж")
 	}
 
 	// Если выбран коридор, этаж должен быть в диапазоне 1-5
-	if hasCorridor && (a.Floor < 1 || a.Floor > 5) {
-		return fmt.Errorf("этаж должен быть в диапазоне от 1 до 5")
+	if hasCorridor {
+		var floor int
+		fmt.Sscanf(a.Floor, "%d", &floor)
+		if floor < 1 || floor > 5 {
+			return fmt.Errorf("этаж должен быть в диапазоне от 1 до 5")
+		}
 	}
 
 	// Если выбрано служебное помещение, проверяем его значение
@@ -283,7 +287,7 @@ func (t TaskControlRequest) Validate() error {
 }
 
 // Форматирование полного адреса
-func FormatFullAddress(street, building, cabinet, corridor, serviceRoom string, floor int) string {
+func FormatFullAddress(street, building, cabinet, corridor, serviceRoom string, floor string) string {
 	parts := []string{}
 	if street != "" {
 		parts = append(parts, street)
@@ -295,8 +299,12 @@ func FormatFullAddress(street, building, cabinet, corridor, serviceRoom string, 
 		parts = append(parts, "каб."+cabinet)
 	} else if corridor != "" {
 		floorStr := ""
-		if floor > 0 {
-			floorStr = fmt.Sprintf(" эт.%d", floor)
+		if floor != "" {
+			var f int
+			fmt.Sscanf(floor, "%d", &f)
+			if f > 0 {
+				floorStr = fmt.Sprintf(" эт.%d", f)
+			}
 		}
 		parts = append(parts, "кор."+corridor+floorStr)
 	} else if serviceRoom != "" {

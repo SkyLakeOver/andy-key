@@ -452,9 +452,9 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			cabinet := rows[i]["cabinet"]
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
-			floor, _ := strconv.Atoi(rows[i]["floor"])
+			floorStr := rows[i]["floor"]
 			
-			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floor)
+			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floorStr)
 		}
 		
 		json.NewEncoder(w).Encode(rows)
@@ -481,8 +481,8 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 		escapedCorridor := strings.ReplaceAll(req.Corridor, "'", "''")
 		escapedServiceRoom := strings.ReplaceAll(req.ServiceRoom, "'", "''")
 		floorStr := "NULL"
-		if req.Floor > 0 {
-			floorStr = strconv.Itoa(req.Floor)
+		if req.Floor != "" {
+			floorStr = fmt.Sprintf("'%s'", strings.ReplaceAll(req.Floor, "'", "''"))
 		}
 
 		query := fmt.Sprintf(`
@@ -534,8 +534,8 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 		escapedCorridor := strings.ReplaceAll(req.Corridor, "'", "''")
 		escapedServiceRoom := strings.ReplaceAll(req.ServiceRoom, "'", "''")
 		floorStr := "NULL"
-		if req.Floor > 0 {
-			floorStr = strconv.Itoa(req.Floor)
+		if req.Floor != "" {
+			floorStr = fmt.Sprintf("'%s'", strings.ReplaceAll(req.Floor, "'", "''"))
 		}
 
 		query := fmt.Sprintf(`
@@ -621,9 +621,9 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 			cabinet := rows[i]["cabinet"]
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
-			floor, _ := strconv.Atoi(rows[i]["floor"])
+			floorStr := rows[i]["floor"]
 			
-			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floor)
+			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floorStr)
 		}
 		
 		json.NewEncoder(w).Encode(rows)
@@ -832,9 +832,9 @@ func apiReferenceWorkstationsHandler(w http.ResponseWriter, r *http.Request) {
 			cabinet := rows[i]["cabinet"]
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
-			floor, _ := strconv.Atoi(rows[i]["floor"])
+			floorStr := rows[i]["floor"]
 			
-			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floor)
+			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floorStr)
 		}
 		
 		json.NewEncoder(w).Encode(rows)
@@ -1008,9 +1008,9 @@ func apiReferenceHostsHandler(w http.ResponseWriter, r *http.Request) {
 			cabinet := rows[i]["cabinet"]
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
-			floor, _ := strconv.Atoi(rows[i]["floor"])
+			floorStr := rows[i]["floor"]
 			
-			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floor)
+			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floorStr)
 		}
 		
 		json.NewEncoder(w).Encode(rows)
@@ -1192,9 +1192,9 @@ func apiReferenceNetworkEquipmentHandler(w http.ResponseWriter, r *http.Request)
 			cabinet := rows[i]["cabinet"]
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
-			floor, _ := strconv.Atoi(rows[i]["floor"])
+			floorStr := rows[i]["floor"]
 			
-			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floor)
+			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floorStr)
 		}
 		
 		json.NewEncoder(w).Encode(rows)
@@ -1373,9 +1373,9 @@ func apiReferenceNetworkMFPsHandler(w http.ResponseWriter, r *http.Request) {
 			cabinet := rows[i]["cabinet"]
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
-			floor, _ := strconv.Atoi(rows[i]["floor"])
+			floorStr := rows[i]["floor"]
 			
-			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floor)
+			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floorStr)
 		}
 		
 		json.NewEncoder(w).Encode(rows)
@@ -1557,9 +1557,9 @@ func apiReferenceIPPhonesHandler(w http.ResponseWriter, r *http.Request) {
 			cabinet := rows[i]["cabinet"]
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
-			floor, _ := strconv.Atoi(rows[i]["floor"])
+			floorStr := rows[i]["floor"]
 			
-			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floor)
+			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, floorStr)
 		}
 		
 		json.NewEncoder(w).Encode(rows)
