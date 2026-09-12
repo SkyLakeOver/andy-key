@@ -19,7 +19,7 @@ const (
 	DEFAULT_DB_PATH        = "data.db"
 	DEFAULT_LOGS_DIR       = "logs"
 	LOG_PREFIX             = "andy-key"
-	CURRENT_SCHEMA_VERSION = "0.0.4.1"
+	CURRENT_SCHEMA_VERSION = "0.0.4.2"
 )
 
 var (
@@ -285,7 +285,7 @@ func migrateDB(fromVersion, toVersion string) error {
 	logDiagnostic(fmt.Sprintf("Начало миграции: %s → %s", fromVersion, toVersion))
 	
 	// Определяем последовательность миграций
-	versions := []string{"0.0.0", "0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.4.1"}
+	versions := []string{"0.0.0", "0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.4.1", "0.0.4.2"}
 	startIdx := -1
 	endIdx := -1
 	for i, v := range versions {
@@ -319,6 +319,8 @@ func migrateDB(fromVersion, toVersion string) error {
 			err = migrate_0_0_3_to_0_0_4()
 		case "0.0.4.1":
 			err = migrate_0_0_4_to_0_0_4_1()
+		case "0.0.4.2":
+			err = migrate_0_0_4_1_to_0_0_4_2()
 		default:
 			return fmt.Errorf("неизвестная версия миграции: %s", next)
 		}
@@ -527,6 +529,7 @@ cabinet TEXT,
 corridor TEXT,
 floor INTEGER CHECK (floor BETWEEN 1 AND 5),
 service_room TEXT,
+description TEXT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )`
@@ -581,6 +584,34 @@ func migrate_0_0_4_to_0_0_4_1() error {
 	escapedVersion := strings.ReplaceAll("0.0.4.1", "'", "''")
 	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
 	logDiagnostic("Миграция 0.0.4→0.0.4.1: завершена успешно")
+	return nil
+}
+
+// Миграция 0.0.4.1 → 0.0.4.2: добавление поля description в reference_addresses
+func migrate_0_0_4_1_to_0_0_4_2() error {
+	logDiagnostic("Миграция 0.0.4.1→0.0.4.2: добавление поля description в таблицу адресов")
+	
+	// Проверяем наличие колонки description
+	descExists, err := columnExists("reference_addresses", "description")
+	if err != nil {
+		return fmt.Errorf("ошибка проверки наличия колонки description: %v", err)
+	}
+	
+	if !descExists {
+		// Добавляем колонку description
+		query := `ALTER TABLE reference_addresses ADD COLUMN description TEXT`
+		if err := ExecDB(query); err != nil {
+			return fmt.Errorf("ошибка добавления колонки description: %v", err)
+		}
+		logPanel("Миграция 0.0.4.1→0.0.4.2: добавлена колонка description в таблицу reference_addresses")
+	} else {
+		logDiagnostic("Миграция 0.0.4.1→0.0.4.2: колонка description уже существует, пропускаем")
+	}
+	
+	// Обновляем версию схемы
+	escapedVersion := strings.ReplaceAll("0.0.4.2", "'", "''")
+	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
+	logDiagnostic("Миграция 0.0.4.1→0.0.4.2: завершена успешно")
 	return nil
 }
 
@@ -949,6 +980,19 @@ service_room TEXT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 UNIQUE(street, building, cabinet, corridor, service_room)
 )`,
+			"0.0.4.2": {
+			"reference_addresses": `CREATE TABLE IF NOT EXISTS reference_addresses (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+street TEXT NOT NULL,
+building TEXT NOT NULL,
+cabinet TEXT,
+corridor TEXT,
+floor INTEGER CHECK (floor BETWEEN 1 AND 5),
+service_room TEXT,
+description TEXT,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+UNIQUE(street, building, cabinet, corridor, service_room)
+)`,
 			"reference_employees": `CREATE TABLE IF NOT EXISTS reference_employees (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 full_name TEXT NOT NULL,
@@ -1034,6 +1078,85 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )`,
 		},
+		"0.0.4.2": {
+			"reference_addresses": `CREATE TABLE IF NOT EXISTS reference_addresses (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+street TEXT NOT NULL,
+building TEXT NOT NULL,
+cabinet TEXT,
+corridor TEXT,
+floor INTEGER CHECK (floor BETWEEN 1 AND 5),
+service_room TEXT,
+description TEXT,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+UNIQUE(street, building, cabinet, corridor, service_room)
+)`,
+			"reference_employees": `CREATE TABLE IF NOT EXISTS reference_employees (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+full_name TEXT NOT NULL,
+short_name TEXT,
+phone_city TEXT,
+phone_internal TEXT,
+address_id INTEGER NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (address_id) REFERENCES reference_addresses (id)
+)`,
+			"reference_workstations": `CREATE TABLE IF NOT EXISTS reference_workstations (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+address_id INTEGER NOT NULL,
+is_vacant BOOLEAN DEFAULT 0,
+employee_id INTEGER,
+inventory_number TEXT NOT NULL,
+seal_numbers TEXT DEFAULT '[]',
+monitor_count INTEGER CHECK (monitor_count BETWEEN 1 AND 5),
+serial_number TEXT NOT NULL,
+replacement_done BOOLEAN DEFAULT 0,
+replacement_date TIMESTAMP,
+replacement_letter TEXT,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (address_id) REFERENCES reference_addresses (id),
+FOREIGN KEY (employee_id) REFERENCES reference_employees (id)
+)`,
+			"reference_hosts": `CREATE TABLE IF NOT EXISTS reference_hosts (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+address_id INTEGER NOT NULL,
+employee_id INTEGER,
+ip TEXT NOT NULL UNIQUE,
+ssh_port INTEGER DEFAULT 22,
+enabled BOOLEAN DEFAULT 1,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (address_id) REFERENCES reference_addresses (id),
+FOREIGN KEY (employee_id) REFERENCES reference_employees (id)
+)`,
+			"reference_network_equipment": `CREATE TABLE IF NOT EXISTS reference_network_equipment (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+address_id INTEGER NOT NULL,
+category TEXT NOT NULL,
+model TEXT NOT NULL,
+type TEXT NOT NULL,
+port_count INTEGER NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (address_id) REFERENCES reference_addresses (id)
+)`,
+			"reference_network_mfps": `CREATE TABLE IF NOT EXISTS reference_network_mfps (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+address_id INTEGER NOT NULL,
+model TEXT NOT NULL,
+ip TEXT NOT NULL UNIQUE,
+hostname TEXT,
+serial_number TEXT NOT NULL,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (address_id) REFERENCES reference_addresses (id)
+)`,
+			"reference_ip_phones": `CREATE TABLE IF NOT EXISTS reference_ip_phones (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+address_id INTEGER NOT NULL,
+employee_full_name TEXT NOT NULL,
+ip TEXT NOT NULL UNIQUE,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+FOREIGN KEY (address_id) REFERENCES reference_addresses (id)
+)`,
+		},
 	}
 	
 	if ver, ok := tables[version]; ok {
@@ -1074,6 +1197,15 @@ func getRequiredTablesForVersion(version string) []string {
 			"reference_addresses", "reference_employees", "reference_workstations",
 			"reference_hosts", "reference_network_equipment", "reference_network_mfps",
 			"reference_ip_phones", "hosts_legacy",
+		}
+	case "0.0.4.2":
+		return []string{
+			"admin_users", "sessions", "credentials", "scripts",
+			"tasks", "task_hosts", "task_scripts", "task_bash_commands",
+			"platform_settings", "schema_version",
+			"reference_addresses", "reference_employees", "reference_workstations",
+			"reference_hosts", "reference_network_equipment", "reference_network_mfps",
+			"reference_ip_phones",
 		}
 	default:
 		return []string{}
@@ -1161,6 +1293,7 @@ cabinet TEXT,
 corridor TEXT,
 floor INTEGER CHECK (floor BETWEEN 1 AND 5),
 service_room TEXT,
+description TEXT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 UNIQUE(street, building, cabinet, corridor, service_room)
 )`,

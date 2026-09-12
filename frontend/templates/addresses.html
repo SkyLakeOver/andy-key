@@ -118,8 +118,13 @@
                 </div>
                 
                 <div class="form-group" x-show="formData.serviceRoom === 'garage'">
-                    <label>Номер гаража</label>
-                    <input type="text" x-model="formData.garage" class="input-field" placeholder="Например: Г-12">
+                    <label>Описание гаража</label>
+                    <input type="text" x-model="formData.description" class="input-field" placeholder="Например: Гараж №12, бокс А-5">
+                </div>
+                
+                <div class="form-group" x-show="formData.serviceRoom !== '' && formData.serviceRoom !== 'garage'">
+                    <label>Описание помещения</label>
+                    <input type="text" x-model="formData.description" class="input-field" placeholder="Описание служебного помещения">
                 </div>
                 
                 <div class="modal-actions">
