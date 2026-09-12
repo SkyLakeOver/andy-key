@@ -980,7 +980,8 @@ service_room TEXT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 UNIQUE(street, building, cabinet, corridor, service_room)
 )`,
-			"0.0.4.2": {
+		},
+		"0.0.4.2": {
 			"reference_addresses": `CREATE TABLE IF NOT EXISTS reference_addresses (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 street TEXT NOT NULL,
@@ -1076,85 +1077,6 @@ ssh_port INTEGER DEFAULT 22,
 enabled BOOLEAN DEFAULT 1,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)`,
-		},
-		"0.0.4.2": {
-			"reference_addresses": `CREATE TABLE IF NOT EXISTS reference_addresses (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-street TEXT NOT NULL,
-building TEXT NOT NULL,
-cabinet TEXT,
-corridor TEXT,
-floor INTEGER CHECK (floor BETWEEN 1 AND 5),
-service_room TEXT,
-description TEXT,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-UNIQUE(street, building, cabinet, corridor, service_room)
-)`,
-			"reference_employees": `CREATE TABLE IF NOT EXISTS reference_employees (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-full_name TEXT NOT NULL,
-short_name TEXT,
-phone_city TEXT,
-phone_internal TEXT,
-address_id INTEGER NOT NULL,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-FOREIGN KEY (address_id) REFERENCES reference_addresses (id)
-)`,
-			"reference_workstations": `CREATE TABLE IF NOT EXISTS reference_workstations (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-address_id INTEGER NOT NULL,
-is_vacant BOOLEAN DEFAULT 0,
-employee_id INTEGER,
-inventory_number TEXT NOT NULL,
-seal_numbers TEXT DEFAULT '[]',
-monitor_count INTEGER CHECK (monitor_count BETWEEN 1 AND 5),
-serial_number TEXT NOT NULL,
-replacement_done BOOLEAN DEFAULT 0,
-replacement_date TIMESTAMP,
-replacement_letter TEXT,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-FOREIGN KEY (address_id) REFERENCES reference_addresses (id),
-FOREIGN KEY (employee_id) REFERENCES reference_employees (id)
-)`,
-			"reference_hosts": `CREATE TABLE IF NOT EXISTS reference_hosts (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-address_id INTEGER NOT NULL,
-employee_id INTEGER,
-ip TEXT NOT NULL UNIQUE,
-ssh_port INTEGER DEFAULT 22,
-enabled BOOLEAN DEFAULT 1,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-FOREIGN KEY (address_id) REFERENCES reference_addresses (id),
-FOREIGN KEY (employee_id) REFERENCES reference_employees (id)
-)`,
-			"reference_network_equipment": `CREATE TABLE IF NOT EXISTS reference_network_equipment (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-address_id INTEGER NOT NULL,
-category TEXT NOT NULL,
-model TEXT NOT NULL,
-type TEXT NOT NULL,
-port_count INTEGER NOT NULL,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-FOREIGN KEY (address_id) REFERENCES reference_addresses (id)
-)`,
-			"reference_network_mfps": `CREATE TABLE IF NOT EXISTS reference_network_mfps (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-address_id INTEGER NOT NULL,
-model TEXT NOT NULL,
-ip TEXT NOT NULL UNIQUE,
-hostname TEXT,
-serial_number TEXT NOT NULL,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-FOREIGN KEY (address_id) REFERENCES reference_addresses (id)
-)`,
-			"reference_ip_phones": `CREATE TABLE IF NOT EXISTS reference_ip_phones (
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-address_id INTEGER NOT NULL,
-employee_full_name TEXT NOT NULL,
-ip TEXT NOT NULL UNIQUE,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-FOREIGN KEY (address_id) REFERENCES reference_addresses (id)
 )`,
 		},
 	}
