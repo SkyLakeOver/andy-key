@@ -13,14 +13,16 @@ type AddressRequest struct {
 	Corridor     string `json:"corridor"`
 	Floor        string `json:"floor"`
 	ServiceRoom  string `json:"service_room"`
+	Garage       string `json:"garage"`
 }
 
 // Validate проверяет корректность данных адреса
 func (a AddressRequest) Validate() error {
-	// Проверяем, что заполнено ровно одно из полей: кабинет, коридор или служебное помещение
+	// Проверяем, что заполнено ровно одно из полей: кабинет, коридор, служебное помещение или гараж
 	hasCabinet := a.Cabinet != ""
 	hasCorridor := a.Corridor != ""
 	hasServiceRoom := a.ServiceRoom != ""
+	hasGarage := a.Garage != ""
 
 	count := 0
 	if hasCabinet {
@@ -32,12 +34,15 @@ func (a AddressRequest) Validate() error {
 	if hasServiceRoom {
 		count++
 	}
+	if hasGarage {
+		count++
+	}
 
 	if count == 0 {
-		return fmt.Errorf("необходимо указать кабинет, коридор или служебное помещение")
+		return fmt.Errorf("необходимо указать тип адреса: кабинет, коридор, служебное помещение или гараж")
 	}
 	if count > 1 {
-		return fmt.Errorf("можно указать только один тип адреса: кабинет, коридор или служебное помещение")
+		return fmt.Errorf("можно указать только один тип адреса")
 	}
 
 	// Если выбран коридор, этаж обязателен
@@ -53,12 +58,6 @@ func (a AddressRequest) Validate() error {
 			return fmt.Errorf("этаж должен быть в диапазоне от 1 до 5")
 		}
 	}
-
-	// Если выбрано служебное помещение, проверяем его значение
-	// (это можно сделать через список допустимых значений или оставить как есть)
-
-	// Если выбран кабинет, проверяем его формат (опционально)
-	// Например, можно проверить, что кабинет состоит из цифр или букв
 
 	// Валидация пройдена
 	return nil
@@ -287,7 +286,7 @@ func (t TaskControlRequest) Validate() error {
 }
 
 // Форматирование полного адреса
-func FormatFullAddress(street, building, cabinet, corridor, serviceRoom string, floor string) string {
+func FormatFullAddress(street, building, cabinet, corridor, serviceRoom, garage, floor string) string {
 	parts := []string{}
 	if street != "" {
 		parts = append(parts, street)
@@ -309,6 +308,8 @@ func FormatFullAddress(street, building, cabinet, corridor, serviceRoom string, 
 		parts = append(parts, "кор."+corridor+floorStr)
 	} else if serviceRoom != "" {
 		parts = append(parts, serviceRoom)
+	} else if garage != "" {
+		parts = append(parts, "гараж "+garage)
 	}
 	return strings.Join(parts, ", ")
 }

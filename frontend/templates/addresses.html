@@ -90,6 +90,7 @@
                         <option value="cabinet">Кабинет</option>
                         <option value="corridor">Коридор</option>
                         <option value="service">Служебное помещение</option>
+                        <option value="garage">Гараж</option>
                     </select>
                 </div>
                 
@@ -114,6 +115,11 @@
                         <option value="office">Офис</option>
                         <option value="other">Другое</option>
                     </select>
+                </div>
+                
+                <div class="form-group" x-show="formData.addressType === 'garage'">
+                    <label>Номер гаража</label>
+                    <input type="text" x-model="formData.garage" class="input-field" placeholder="Например: Г-12">
                 </div>
                 
                 <div class="modal-actions">
@@ -141,7 +147,8 @@ function addressesPage() {
             cabinet: '',
             corridor: '',
             floor: null,
-            serviceRoom: ''
+            serviceRoom: '',
+            garage: ''
         },
         
         init() {
@@ -187,6 +194,7 @@ function addressesPage() {
             this.formData.corridor = '';
             this.formData.floor = null;
             this.formData.serviceRoom = '';
+            this.formData.garage = '';
         },
         
         editAddress(address) {
@@ -198,7 +206,8 @@ function addressesPage() {
                 cabinet: address.type === 'cabinet' ? address.value : '',
                 corridor: address.type === 'corridor' ? address.value : '',
                 floor: address.floor,
-                serviceRoom: address.type === 'service' ? address.value : ''
+                serviceRoom: address.type === 'service' ? address.value : '',
+                garage: address.type === 'garage' ? address.value : ''
             };
             this.showEditModal = true;
         },
@@ -214,7 +223,8 @@ function addressesPage() {
                 cabinet: this.formData.addressType === 'cabinet' ? this.formData.cabinet : '',
                 corridor: this.formData.addressType === 'corridor' ? this.formData.corridor : '',
                 service_room: this.formData.addressType === 'service' ? this.formData.serviceRoom : '',
-                floor: this.formData.floor || 0
+                garage: this.formData.addressType === 'garage' ? this.formData.garage : '',
+                floor: this.formData.floor || ''
             };
             
             fetch(url, {
@@ -222,7 +232,13 @@ function addressesPage() {
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
             })
-            .then(res => res.json())
+            .then(async res => {
+                const data = await res.json();
+                if (!res.ok) {
+                    throw new Error(data.error || 'Ошибка сохранения');
+                }
+                return data;
+            })
             .then(data => {
                 if (data.success) {
                     this.loadAddresses();
@@ -231,7 +247,10 @@ function addressesPage() {
                     alert('Ошибка: ' + data.error);
                 }
             })
-            .catch(err => alert('Ошибка сохранения: ' + err));
+            .catch(err => {
+                console.error('Ошибка сохранения адреса:', err);
+                alert('Ошибка сохранения: ' + err.message);
+            });
         },
         
         deleteAddress(id) {
@@ -249,7 +268,7 @@ function addressesPage() {
         closeModal() {
             this.showAddModal = false;
             this.showEditModal = false;
-            this.formData = {id: null, street: '', building: '', addressType: '', cabinet: '', corridor: '', floor: null, serviceRoom: ''};
+            this.formData = {id: null, street: '', building: '', addressType: '', cabinet: '', corridor: '', floor: null, serviceRoom: '', garage: ''};
         }
     }
 }
