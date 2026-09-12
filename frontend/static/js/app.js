@@ -232,7 +232,16 @@ document.addEventListener('alpine:init', () => {
         filterType: '',
         showAddModal: false,
         showEditModal: false,
-        formData: { street: '', building: '', cabinet: '', corridor: '', floor: '', service_room: '', type: 'cabinet' },
+        formData: { 
+            street: '', 
+            building: '', 
+            cabinet: '', 
+            corridor: '', 
+            floor: '', 
+            service_room: '', 
+            garage_number: '',
+            type: 'cabinet' 
+        },
         addresses: [],
         
         init() { this.loadAddresses(); },
@@ -251,10 +260,11 @@ document.addEventListener('alpine:init', () => {
                 const street = addr.street || addr.address || '';
                 const building = addr.building || '';
                 const cabinet = addr.cabinet || '';
-                const description = addr.description || '';
+                const description = addr.description || addr.service_room || '';
                 const type = addr.type || '';
+                const garage = addr.garage_number || '';
                 
-                const searchString = `${street} ${building} ${cabinet} ${description} ${type}`.toLowerCase();
+                const searchString = `${street} ${building} ${cabinet} ${description} ${type} ${garage}`.toLowerCase();
                 
                 const matchesSearch = searchString.includes(s);
                 const matchesType = !this.filterType || addr.type === this.filterType;
@@ -263,7 +273,19 @@ document.addEventListener('alpine:init', () => {
             });
         },
         
-        openAddModal() { this.formData = { street: '', building: '', cabinet: '', corridor: '', floor: '', service_room: '', type: 'cabinet' }; this.showAddModal = true; },
+        openAddModal() { 
+            this.formData = { 
+                street: '', 
+                building: '', 
+                cabinet: '', 
+                corridor: '', 
+                floor: '', 
+                service_room: '', 
+                garage_number: '',
+                type: 'cabinet' 
+            }; 
+            this.showAddModal = true; 
+        },
         closeAddModal() { this.showAddModal = false; },
         
         saveAddress() {
@@ -288,7 +310,16 @@ document.addEventListener('alpine:init', () => {
         },
         
         onAddressTypeChange() {
-            // Обработка изменения типа адреса (для будущей логики)
+            // Сброс полей при смене типа
+            if (this.formData.type !== 'cabinet') this.formData.cabinet = '';
+            if (this.formData.type !== 'corridor') {
+                this.formData.corridor = '';
+                this.formData.floor = '';
+            }
+            if (this.formData.type !== 'service') {
+                this.formData.service_room = '';
+                this.formData.garage_number = '';
+            }
             console.log('Тип адреса изменён на:', this.formData.type);
         },
         
@@ -300,6 +331,7 @@ document.addEventListener('alpine:init', () => {
                 corridor: addr.corridor || '', 
                 floor: addr.floor || '', 
                 service_room: addr.service_room || '', 
+                garage_number: addr.garage_number || '',
                 type: addr.type || 'cabinet' 
             };
             this.showEditModal = true;
