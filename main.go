@@ -24,6 +24,79 @@ var (
 	footerText   string // Глобальная переменная для хранения расшифрованного футера
 )
 
+// ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ БЕЗОПАСНОЙ РАБОТЫ С БД ====================
+
+// validateID проверяет, что ID является положительным числом
+func validateID(id int) bool {
+	return id > 0
+}
+
+// getDB возвращает глобальный экземпляр DB для работы с базой данных
+func getDB() (*DB, error) {
+	if db == nil {
+		return nil, fmt.Errorf("база данных не инициализирована")
+	}
+	return db, nil
+}
+
+// querySafe выполняет параметризованный SQL-запрос с возвратом данных
+func querySafe(query string, args ...interface{}) ([]map[string]string, error) {
+	// Конвертируем interface{} args в string args для QueryDB
+	strArgs := make([]string, len(args))
+	for i, arg := range args {
+		switch v := arg.(type) {
+		case string:
+			strArgs[i] = v
+		case int:
+			strArgs[i] = strconv.Itoa(v)
+		case int64:
+			strArgs[i] = strconv.FormatInt(v, 10)
+		case float64:
+			strArgs[i] = strconv.FormatFloat(v, 'f', -1, 64)
+		default:
+			strArgs[i] = fmt.Sprintf("%v", v)
+		}
+	}
+	return QueryDB(query, strArgs...)
+}
+
+// execSafe выполняет параметризованный SQL-запрос без возврата данных
+func execSafe(query string, args ...interface{}) error {
+	// Конвертируем interface{} args в string args для ExecDB
+	strArgs := make([]string, len(args))
+	for i, arg := range args {
+		switch v := arg.(type) {
+		case string:
+			strArgs[i] = v
+		case int:
+			strArgs[i] = strconv.Itoa(v)
+		case int64:
+			strArgs[i] = strconv.FormatInt(v, 10)
+		case float64:
+			strArgs[i] = strconv.FormatFloat(v, 'f', -1, 64)
+		default:
+			strArgs[i] = fmt.Sprintf("%v", v)
+		}
+	}
+	return ExecDB(query, strArgs...)
+}
+
+// querySingleInt выполняет запрос и возвращает одно целое значение
+func querySingleInt(query string, args ...interface{}) (int, error) {
+	results, err := querySafe(query, args...)
+	if err != nil {
+		return 0, err
+	}
+	if len(results) == 0 {
+		return 0, fmt.Errorf("запрос не вернул результатов")
+	}
+	// Получаем первое значение из первой колонки
+	for _, val := range results[0] {
+		return strconv.Atoi(val)
+	}
+	return 0, fmt.Errorf("запрос не вернул результатов")
+}
+
 // ==================== ИНИЦИАЛИЗАЦИЯ ШАБЛОНОВ ====================
 
 var (
@@ -320,6 +393,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		Expires:  time.Now().Add(24 * time.Hour),
 		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
 	})
 
 	// Возвращаем URL для редиректа вместо простого success
@@ -329,20 +404,44 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 func logoutHandler(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("session_token")
-	if err == nil {
-		ExecDB("DELETE FROM sessions WHERE token = '" + cookie.Value + "'")
+	if err == nil && cookie.Value != "" {
+		// Используем параметризованный запрос для безопасного удаления сессии
+		execSafe("DELETE FROM sessions WHERE token = ?", cookie.Value)
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:    "session_token",
-		Value:   "",
-		Path:    "/",
-		Expires: time.Now().Add(-1 * time.Hour),
+		Name:     "session_token",
+		Value:    "",
+		Path:     "/",
+		Expires:  time.Now().Add(-1 * time.Hour),
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
 	})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
+// recoverMiddleware добавляет обработку паник в HTTP-хендлеры
+func recoverMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("Паника в хендлере %s: %v", r.URL.Path, err)
+				http.Error(w, "Внутренняя ошибка сервера", http.StatusInternalServerError)
+			}
+		}()
+		next(w, r)
+	}
+}
+
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("Паника в authMiddleware: %v", err)
+				w.WriteHeader(http.StatusInternalServerError)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Внутренняя ошибка сервера"})
+			}
+		}()
 		cookie, err := r.Cookie("session_token")
 		if err != nil || !CheckSession(cookie.Value) {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -366,13 +465,12 @@ func apiUserHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Получаем информацию о пользователе из БД по токену сессии
-	escapedToken := strings.ReplaceAll(cookie.Value, "'", "''")
-	rows, err := QueryDB(fmt.Sprintf(`
+	rows, err := querySafe(`
 		SELECT u.username
 		FROM admin_users u
 		JOIN sessions s ON u.id = s.user_id
-		WHERE s.token = '%s' AND s.expires_at > DATETIME('now')
-	`, escapedToken))
+		WHERE s.token = ? AND s.expires_at > DATETIME('now')
+	`, cookie.Value)
 
 	if err != nil || len(rows) == 0 {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -435,7 +533,7 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case "GET":
 		rows, err := QueryDB(`
-			SELECT id, street, building, cabinet, corridor, floor, service_room, created_at
+			SELECT id, street, building, cabinet, corridor, floor, service_room, description, created_at
 			FROM reference_addresses
 			ORDER BY street, building, floor, cabinet, corridor, service_room
 		`)
@@ -474,42 +572,37 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений (используем параметризированные значения ниже)
-		// Ручное экранирование удалено, так как используется fmt.Sprintf с прямой подстановкой,
-		// но для безопасности в будущем рекомендуется перейти на sql.DB.Exec с параметрами.
-		// Оставлено только для floor, так как он опционален.
-		
-		// ВНИМАНИЕ: В схеме БД (db.go) НЕТ колонки garage_number.
-		// Есть только: street, building, cabinet, corridor, floor, service_room.
-		// Если выбран подтип "garage", то номер гаража сохраняем в поле cabinet,
-		// а в service_room пишем "garage".
+		// Логика для гаража и служебных помещений
 		finalCabinet := req.Cabinet
 		finalServiceRoom := req.ServiceRoom
 		
 		if req.ServiceRoom == "garage" {
-			// Если это гараж, то Cabinet - это номер гаража, ServiceRoom - "garage"
+			// Если это гараж, Cabinet - это номер/описание гаража, ServiceRoom - "garage"
 			finalCabinet = req.Cabinet 
 			finalServiceRoom = "garage"
 		}
 
-		floorStr := "NULL"
+		// Используем параметризованный запрос вместо конкатенации
+		var err error
 		if req.Floor != "" {
-			floorStr = fmt.Sprintf("'%s'", strings.ReplaceAll(req.Floor, "'", "''"))
+			floorInt, err := strconv.Atoi(req.Floor)
+			if err != nil || floorInt < 1 || floorInt > 5 {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Этаж должен быть числом от 1 до 5"})
+				return
+			}
+			err = execSafe(
+				"INSERT INTO reference_addresses (street, building, cabinet, corridor, floor, service_room, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
+				req.Street, req.Building, finalCabinet, req.Corridor, floorInt, finalServiceRoom, req.Description,
+			)
+		} else {
+			err = execSafe(
+				"INSERT INTO reference_addresses (street, building, cabinet, corridor, floor, service_room, description) VALUES (?, ?, ?, ?, NULL, ?, ?)",
+				req.Street, req.Building, finalCabinet, req.Corridor, finalServiceRoom, req.Description,
+			)
 		}
 
-		// Экранируем основные поля перед подстановкой
-		eStreet := strings.ReplaceAll(req.Street, "'", "''")
-		eBuilding := strings.ReplaceAll(req.Building, "'", "''")
-		eCorridor := strings.ReplaceAll(req.Corridor, "'", "''")
-		eCabinet := strings.ReplaceAll(finalCabinet, "'", "''")
-		eServiceRoom := strings.ReplaceAll(finalServiceRoom, "'", "''")
-
-		query := fmt.Sprintf(`
-			INSERT INTO reference_addresses (street, building, cabinet, corridor, floor, service_room)
-			VALUES ('%s', '%s', '%s', '%s', %s, '%s')
-		`, eStreet, eBuilding, eCabinet, eCorridor, floorStr, eServiceRoom)
-
-		if err := ExecDB(query); err != nil {
+		if err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint") {
 				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(map[string]string{"error": "Такой адрес уже существует"})
@@ -546,10 +639,6 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedStreet := strings.ReplaceAll(req.Street, "'", "''")
-		escapedBuilding := strings.ReplaceAll(req.Building, "'", "''")
-		
 		// Логика для гаража (аналогично INSERT)
 		finalCabinet := req.Cabinet
 		finalServiceRoom := req.ServiceRoom
@@ -559,20 +648,26 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			finalServiceRoom = "garage"
 		}
 		
-		escapedCorridor := strings.ReplaceAll(req.Corridor, "'", "''")
-		
-		floorStr := "NULL"
+		// Используем параметризованный запрос вместо конкатенации
 		if req.Floor != "" {
-			floorStr = fmt.Sprintf("'%s'", strings.ReplaceAll(req.Floor, "'", "''"))
+			floorInt, err := strconv.Atoi(req.Floor)
+			if err != nil || floorInt < 1 || floorInt > 5 {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Этаж должен быть числом от 1 до 5"})
+				return
+			}
+			err = execSafe(
+				"UPDATE reference_addresses SET street = ?, building = ?, cabinet = ?, corridor = ?, floor = ?, service_room = ?, description = ? WHERE id = ?",
+				req.Street, req.Building, finalCabinet, req.Corridor, floorInt, finalServiceRoom, req.Description, id,
+			)
+		} else {
+			err = execSafe(
+				"UPDATE reference_addresses SET street = ?, building = ?, cabinet = ?, corridor = ?, floor = NULL, service_room = ?, description = ? WHERE id = ?",
+				req.Street, req.Building, finalCabinet, req.Corridor, finalServiceRoom, req.Description, id,
+			)
 		}
 
-		query := fmt.Sprintf(`
-			UPDATE reference_addresses
-			SET street = '%s', building = '%s', cabinet = '%s', corridor = '%s', floor = %s, service_room = '%s'
-			WHERE id = %d
-		`, escapedStreet, escapedBuilding, finalCabinet, escapedCorridor, floorStr, finalServiceRoom, id)
-
-		if err := ExecDB(query); err != nil {
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -584,24 +679,33 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/reference/addresses/")
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
+		if err != nil || !validateID(id) {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Некорректный ID адреса"})
 			return
 		}
 
 		// Проверяем, используется ли адрес в других таблицах
-		usedInEmployees, _ := QueryDB(fmt.Sprintf("SELECT id FROM reference_employees WHERE address_id = %d LIMIT 1", id))
-		usedInWorkstations, _ := QueryDB(fmt.Sprintf("SELECT id FROM reference_workstations WHERE address_id = %d LIMIT 1", id))
-		usedInHosts, _ := QueryDB(fmt.Sprintf("SELECT id FROM reference_hosts WHERE address_id = %d LIMIT 1", id))
+		usedInEmployees, err := querySingleInt("SELECT id FROM reference_employees WHERE address_id = ? LIMIT 1", id)
+		if err != nil && err.Error() != "sql: no rows in result set" {
+			log.Printf("Ошибка проверки использования адреса в employees: %v", err)
+		}
+		usedInWorkstations, err := querySingleInt("SELECT id FROM reference_workstations WHERE address_id = ? LIMIT 1", id)
+		if err != nil && err.Error() != "sql: no rows in result set" {
+			log.Printf("Ошибка проверки использования адреса в workstations: %v", err)
+		}
+		usedInHosts, err := querySingleInt("SELECT id FROM reference_hosts WHERE address_id = ? LIMIT 1", id)
+		if err != nil && err.Error() != "sql: no rows in result set" {
+			log.Printf("Ошибка проверки использования адреса в hosts: %v", err)
+		}
 		
-		if len(usedInEmployees) > 0 || len(usedInWorkstations) > 0 || len(usedInHosts) > 0 {
+		if usedInEmployees > 0 || usedInWorkstations > 0 || usedInHosts > 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Нельзя удалить адрес, так как он используется в других справочниках"})
 			return
 		}
 
-		if err := ExecDB(fmt.Sprintf("DELETE FROM reference_addresses WHERE id = %d", id)); err != nil {
+		if err := execSafe("DELETE FROM reference_addresses WHERE id = ?", id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -683,9 +787,7 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Проверяем, что адрес не является служебным помещением
-		addressCheck, err := QueryDB(fmt.Sprintf(`
-			SELECT service_room FROM reference_addresses WHERE id = %d
-		`, req.AddressID))
+		addressCheck, err := querySafe("SELECT service_room FROM reference_addresses WHERE id = ?", req.AddressID)
 		if err != nil || len(addressCheck) == 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Указанный адрес не найден"})
@@ -698,18 +800,13 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedFullName := strings.ReplaceAll(req.FullName, "'", "''")
-		escapedShortName := strings.ReplaceAll(req.ShortName, "'", "''")
-		escapedPhoneCity := strings.ReplaceAll(req.PhoneCity, "'", "''")
-		escapedPhoneInternal := strings.ReplaceAll(req.PhoneInternal, "'", "''")
+		// Используем параметризованный запрос вместо конкатенации
+		err = execSafe(
+			"INSERT INTO reference_employees (full_name, short_name, phone_city, phone_internal, address_id) VALUES (?, ?, ?, ?, ?)",
+			req.FullName, req.ShortName, req.PhoneCity, req.PhoneInternal, req.AddressID,
+		)
 
-		query := fmt.Sprintf(`
-			INSERT INTO reference_employees (full_name, short_name, phone_city, phone_internal, address_id)
-			VALUES ('%s', '%s', '%s', '%s', %d)
-		`, escapedFullName, escapedShortName, escapedPhoneCity, escapedPhoneInternal, req.AddressID)
-
-		if err := ExecDB(query); err != nil {
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -753,9 +850,7 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Проверяем, что адрес не является служебным помещением
-		addressCheck, err := QueryDB(fmt.Sprintf(`
-			SELECT service_room FROM reference_addresses WHERE id = %d
-		`, req.AddressID))
+		addressCheck, err := querySafe("SELECT service_room FROM reference_addresses WHERE id = ?", req.AddressID)
 		if err != nil || len(addressCheck) == 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Указанный адрес не найден"})
@@ -768,19 +863,13 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedFullName := strings.ReplaceAll(req.FullName, "'", "''")
-		escapedShortName := strings.ReplaceAll(req.ShortName, "'", "''")
-		escapedPhoneCity := strings.ReplaceAll(req.PhoneCity, "'", "''")
-		escapedPhoneInternal := strings.ReplaceAll(req.PhoneInternal, "'", "''")
+		// Используем параметризованный запрос вместо конкатенации
+		err = execSafe(
+			"UPDATE reference_employees SET full_name = ?, short_name = ?, phone_city = ?, phone_internal = ?, address_id = ? WHERE id = ?",
+			req.FullName, req.ShortName, req.PhoneCity, req.PhoneInternal, req.AddressID, id,
+		)
 
-		query := fmt.Sprintf(`
-			UPDATE reference_employees
-			SET full_name = '%s', short_name = '%s', phone_city = '%s', phone_internal = '%s', address_id = %d
-			WHERE id = %d
-		`, escapedFullName, escapedShortName, escapedPhoneCity, escapedPhoneInternal, req.AddressID, id)
-
-		if err := ExecDB(query); err != nil {
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -799,8 +888,18 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Проверяем, используется ли сотрудник в других таблицах
-		usedInWorkstations, _ := QueryDB(fmt.Sprintf("SELECT id FROM reference_workstations WHERE employee_id = %d LIMIT 1", id))
-		usedInHosts, _ := QueryDB(fmt.Sprintf("SELECT id FROM reference_hosts WHERE employee_id = %d LIMIT 1", id))
+		usedInWorkstations, err := querySafe("SELECT id FROM reference_workstations WHERE employee_id = ? LIMIT 1", id)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка проверки использования сотрудника"})
+			return
+		}
+		usedInHosts, err := querySafe("SELECT id FROM reference_hosts WHERE employee_id = ? LIMIT 1", id)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка проверки использования сотрудника"})
+			return
+		}
 		
 		if len(usedInWorkstations) > 0 || len(usedInHosts) > 0 {
 			w.WriteHeader(http.StatusBadRequest)
@@ -808,7 +907,7 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := ExecDB(fmt.Sprintf("DELETE FROM reference_employees WHERE id = %d", id)); err != nil {
+		if err := execSafe("DELETE FROM reference_employees WHERE id = ?", id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -882,34 +981,32 @@ func apiReferenceWorkstationsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedInventoryNumber := strings.ReplaceAll(req.InventoryNumber, "'", "''")
-		escapedSealNumbers := strings.ReplaceAll(req.SealNumbers, "'", "''")
-		escapedSerialNumber := strings.ReplaceAll(req.SerialNumber, "'", "''")
-		escapedReplacementDate := "NULL"
-		if req.ReplacementDate != "" {
-			escapedReplacementDate = "'" + strings.ReplaceAll(req.ReplacementDate, "'", "''") + "'"
-		}
-		escapedReplacementLetter := "NULL"
-		if req.ReplacementLetter != "" {
-			escapedReplacementLetter = "'" + strings.ReplaceAll(req.ReplacementLetter, "'", "''") + "'"
-		}
-		employeeIDStr := "NULL"
-		if req.EmployeeID != 0 {
-			employeeIDStr = strconv.Itoa(req.EmployeeID)
-		}
-
-		query := fmt.Sprintf(`
-			INSERT INTO reference_workstations (
-				address_id, is_vacant, employee_id, inventory_number, seal_numbers,
-				monitor_count, serial_number, replacement_done, replacement_date, replacement_letter
-			) VALUES (
-				%d, %v, %s, '%s', '%s', %d, '%s', %v, %s, %s
+		// Используем параметризованный запрос вместо конкатенации
+		var err error
+		if req.EmployeeID != 0 && req.ReplacementDate != "" && req.ReplacementLetter != "" {
+			err = execSafe(
+				`INSERT INTO reference_workstations (address_id, is_vacant, employee_id, inventory_number, seal_numbers, monitor_count, serial_number, replacement_done, replacement_date, replacement_letter) 
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				req.AddressID, req.IsVacant, req.EmployeeID, req.InventoryNumber, req.SealNumbers,
+				req.MonitorCount, req.SerialNumber, req.ReplacementDone, req.ReplacementDate, req.ReplacementLetter,
 			)
-		`, req.AddressID, req.IsVacant, employeeIDStr, escapedInventoryNumber, escapedSealNumbers,
-		   req.MonitorCount, escapedSerialNumber, req.ReplacementDone, escapedReplacementDate, escapedReplacementLetter)
+		} else if req.EmployeeID != 0 && req.ReplacementDate == "" && req.ReplacementLetter == "" {
+			err = execSafe(
+				`INSERT INTO reference_workstations (address_id, is_vacant, employee_id, inventory_number, seal_numbers, monitor_count, serial_number, replacement_done, replacement_date, replacement_letter) 
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+				req.AddressID, req.IsVacant, req.EmployeeID, req.InventoryNumber, req.SealNumbers,
+				req.MonitorCount, req.SerialNumber, req.ReplacementDone,
+			)
+		} else if req.EmployeeID == 0 {
+			err = execSafe(
+				`INSERT INTO reference_workstations (address_id, is_vacant, employee_id, inventory_number, seal_numbers, monitor_count, serial_number, replacement_done, replacement_date, replacement_letter) 
+				 VALUES (?, ?, NULL, ?, ?, ?, ?, ?, NULL, NULL)`,
+				req.AddressID, req.IsVacant, req.InventoryNumber, req.SealNumbers,
+				req.MonitorCount, req.SerialNumber, req.ReplacementDone,
+			)
+		}
 
-		if err := ExecDB(query); err != nil {
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -941,34 +1038,28 @@ func apiReferenceWorkstationsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedInventoryNumber := strings.ReplaceAll(req.InventoryNumber, "'", "''")
-		escapedSealNumbers := strings.ReplaceAll(req.SealNumbers, "'", "''")
-		escapedSerialNumber := strings.ReplaceAll(req.SerialNumber, "'", "''")
-		escapedReplacementDate := "NULL"
-		if req.ReplacementDate != "" {
-			escapedReplacementDate = "'" + strings.ReplaceAll(req.ReplacementDate, "'", "''") + "'"
-		}
-		escapedReplacementLetter := "NULL"
-		if req.ReplacementLetter != "" {
-			escapedReplacementLetter = "'" + strings.ReplaceAll(req.ReplacementLetter, "'", "''") + "'"
-		}
-		employeeIDStr := "NULL"
-		if req.EmployeeID != 0 {
-			employeeIDStr = strconv.Itoa(req.EmployeeID)
+		// Используем параметризованный запрос вместо конкатенации
+		if req.EmployeeID != 0 && req.ReplacementDate != "" && req.ReplacementLetter != "" {
+			err = execSafe(
+				`UPDATE reference_workstations SET address_id = ?, is_vacant = ?, employee_id = ?, inventory_number = ?, seal_numbers = ?, monitor_count = ?, serial_number = ?, replacement_done = ?, replacement_date = ?, replacement_letter = ? WHERE id = ?`,
+				req.AddressID, req.IsVacant, req.EmployeeID, req.InventoryNumber, req.SealNumbers,
+				req.MonitorCount, req.SerialNumber, req.ReplacementDone, req.ReplacementDate, req.ReplacementLetter, id,
+			)
+		} else if req.EmployeeID != 0 && (req.ReplacementDate == "" || req.ReplacementLetter == "") {
+			err = execSafe(
+				`UPDATE reference_workstations SET address_id = ?, is_vacant = ?, employee_id = ?, inventory_number = ?, seal_numbers = ?, monitor_count = ?, serial_number = ?, replacement_done = ?, replacement_date = NULL, replacement_letter = NULL WHERE id = ?`,
+				req.AddressID, req.IsVacant, req.EmployeeID, req.InventoryNumber, req.SealNumbers,
+				req.MonitorCount, req.SerialNumber, req.ReplacementDone, id,
+			)
+		} else {
+			err = execSafe(
+				`UPDATE reference_workstations SET address_id = ?, is_vacant = ?, employee_id = NULL, inventory_number = ?, seal_numbers = ?, monitor_count = ?, serial_number = ?, replacement_done = ?, replacement_date = NULL, replacement_letter = NULL WHERE id = ?`,
+				req.AddressID, req.IsVacant, req.InventoryNumber, req.SealNumbers,
+				req.MonitorCount, req.SerialNumber, req.ReplacementDone, id,
+			)
 		}
 
-		query := fmt.Sprintf(`
-			UPDATE reference_workstations
-			SET address_id = %d, is_vacant = %v, employee_id = %s, inventory_number = '%s',
-			    seal_numbers = '%s', monitor_count = %d, serial_number = '%s',
-			    replacement_done = %v, replacement_date = %s, replacement_letter = %s
-			WHERE id = %d
-		`, req.AddressID, req.IsVacant, employeeIDStr, escapedInventoryNumber, escapedSealNumbers,
-		   req.MonitorCount, escapedSerialNumber, req.ReplacementDone, escapedReplacementDate, 
-		   escapedReplacementLetter, id)
-
-		if err := ExecDB(query); err != nil {
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -986,7 +1077,7 @@ func apiReferenceWorkstationsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := ExecDB(fmt.Sprintf("DELETE FROM reference_workstations WHERE id = %d", id)); err != nil {
+		if err := execSafe("DELETE FROM reference_workstations WHERE id = ?", id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1063,12 +1154,7 @@ func apiReferenceHostsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedIP := strings.ReplaceAll(req.IP, "'", "''")
-		employeeIDStr := "NULL"
-		if req.EmployeeID != 0 {
-			employeeIDStr = strconv.Itoa(req.EmployeeID)
-		}
+		// Используем параметризованный запрос вместо конкатенации
 		sshPort := req.SSHPort
 		if sshPort == 0 {
 			sshPort = 22
@@ -1078,12 +1164,10 @@ func apiReferenceHostsHandler(w http.ResponseWriter, r *http.Request) {
 			enabled = 0
 		}
 
-		query := fmt.Sprintf(`
-			INSERT INTO reference_hosts (address_id, employee_id, ip, ssh_port, enabled)
-			VALUES (%d, %s, '%s', %d, %d)
-		`, req.AddressID, employeeIDStr, escapedIP, sshPort, enabled)
-
-		if err := ExecDB(query); err != nil {
+		if err := execSafe(
+			"INSERT INTO reference_hosts (address_id, employee_id, ip, ssh_port, enabled) VALUES (?, ?, ?, ?, ?)",
+			req.AddressID, req.EmployeeID, req.IP, sshPort, enabled,
+		); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint") {
 				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(map[string]string{"error": "Хост с таким IP адресом уже существует"})
@@ -1125,12 +1209,7 @@ func apiReferenceHostsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedIP := strings.ReplaceAll(req.IP, "'", "''")
-		employeeIDStr := "NULL"
-		if req.EmployeeID != 0 {
-			employeeIDStr = strconv.Itoa(req.EmployeeID)
-		}
+		// Используем параметризованный запрос вместо конкатенации
 		sshPort := req.SSHPort
 		if sshPort == 0 {
 			sshPort = 22
@@ -1140,13 +1219,10 @@ func apiReferenceHostsHandler(w http.ResponseWriter, r *http.Request) {
 			enabled = 0
 		}
 
-		query := fmt.Sprintf(`
-			UPDATE reference_hosts
-			SET address_id = %d, employee_id = %s, ip = '%s', ssh_port = %d, enabled = %d
-			WHERE id = %d
-		`, req.AddressID, employeeIDStr, escapedIP, sshPort, enabled, id)
-
-		if err := ExecDB(query); err != nil {
+		if err := execSafe(
+			"UPDATE reference_hosts SET address_id = ?, employee_id = ?, ip = ?, ssh_port = ?, enabled = ? WHERE id = ?",
+			req.AddressID, req.EmployeeID, req.IP, sshPort, enabled, id,
+		); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1165,14 +1241,17 @@ func apiReferenceHostsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Проверяем, используется ли хост в задачах
-		usedInTasks, _ := QueryDB(fmt.Sprintf("SELECT id FROM task_hosts WHERE host_id = %d LIMIT 1", id))
-		if len(usedInTasks) > 0 {
+		usedInTasks, err := querySingleInt("SELECT id FROM task_hosts WHERE host_id = ? LIMIT 1", id)
+		if err != nil && err.Error() != "sql: no rows in result set" {
+			log.Printf("Ошибка проверки использования хоста в задачах: %v", err)
+		}
+		if usedInTasks > 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Нельзя удалить хост, так как он используется в задачах"})
 			return
 		}
 
-		if err := ExecDB(fmt.Sprintf("DELETE FROM reference_hosts WHERE id = %d", id)); err != nil {
+		if err := execSafe("DELETE FROM reference_hosts WHERE id = ?", id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1262,17 +1341,11 @@ func apiReferenceNetworkEquipmentHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		// Экранирование значений
-		escapedCategory := strings.ReplaceAll(req.Category, "'", "''")
-		escapedType := strings.ReplaceAll(req.Type, "'", "''")
-		escapedModel := strings.ReplaceAll(req.Model, "'", "''")
-
-		query := fmt.Sprintf(`
-			INSERT INTO reference_network_equipment (address_id, category, type, model, port_count)
-			VALUES (%d, '%s', '%s', '%s', %d)
-		`, req.AddressID, escapedCategory, escapedType, escapedModel, req.PortCount)
-
-		if err := ExecDB(query); err != nil {
+		// Используем параметризованный запрос вместо конкатенации
+		if err := execSafe(
+			"INSERT INTO reference_network_equipment (address_id, category, type, model, port_count) VALUES (?, ?, ?, ?, ?)",
+			req.AddressID, req.Category, req.Type, req.Model, req.PortCount,
+		); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1324,18 +1397,11 @@ func apiReferenceNetworkEquipmentHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		// Экранирование значений
-		escapedCategory := strings.ReplaceAll(req.Category, "'", "''")
-		escapedType := strings.ReplaceAll(req.Type, "'", "''")
-		escapedModel := strings.ReplaceAll(req.Model, "'", "''")
-
-		query := fmt.Sprintf(`
-			UPDATE reference_network_equipment
-			SET address_id = %d, category = '%s', type = '%s', model = '%s', port_count = %d
-			WHERE id = %d
-		`, req.AddressID, escapedCategory, escapedType, escapedModel, req.PortCount, id)
-
-		if err := ExecDB(query); err != nil {
+		// Используем параметризованный запрос вместо конкатенации
+		if err := execSafe(
+			"UPDATE reference_network_equipment SET address_id = ?, category = ?, type = ?, model = ?, port_count = ? WHERE id = ?",
+			req.AddressID, req.Category, req.Type, req.Model, req.PortCount, id,
+		); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1353,7 +1419,7 @@ func apiReferenceNetworkEquipmentHandler(w http.ResponseWriter, r *http.Request)
 			return
 		}
 
-		if err := ExecDB(fmt.Sprintf("DELETE FROM reference_network_equipment WHERE id = %d", id)); err != nil {
+		if err := execSafe("DELETE FROM reference_network_equipment WHERE id = ?", id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1438,21 +1504,12 @@ func apiReferenceNetworkMFPsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedModel := strings.ReplaceAll(req.Model, "'", "''")
-		escapedIP := strings.ReplaceAll(req.IP, "'", "''")
-		escapedHostname := "NULL"
-		if req.Hostname != "" {
-			escapedHostname = "'" + strings.ReplaceAll(req.Hostname, "'", "''") + "'"
-		}
-		escapedSerialNumber := strings.ReplaceAll(req.SerialNumber, "'", "''")
-
-		query := fmt.Sprintf(`
-			INSERT INTO reference_network_mfps (address_id, model, ip, hostname, serial_number)
-			VALUES (%d, '%s', '%s', %s, '%s')
-		`, req.AddressID, escapedModel, escapedIP, escapedHostname, escapedSerialNumber)
-
-		if err := ExecDB(query); err != nil {
+		// Используем параметризованный запрос вместо конкатенации
+		hostname := req.Hostname
+		if err := execSafe(
+			"INSERT INTO reference_network_mfps (address_id, model, ip, hostname, serial_number) VALUES (?, ?, ?, ?, ?)",
+			req.AddressID, req.Model, req.IP, hostname, req.SerialNumber,
+		); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint") {
 				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(map[string]string{"error": "МФУ с таким IP адресом уже существует"})
@@ -1504,22 +1561,11 @@ func apiReferenceNetworkMFPsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedModel := strings.ReplaceAll(req.Model, "'", "''")
-		escapedIP := strings.ReplaceAll(req.IP, "'", "''")
-		escapedHostname := "NULL"
-		if req.Hostname != "" {
-			escapedHostname = "'" + strings.ReplaceAll(req.Hostname, "'", "''") + "'"
-		}
-		escapedSerialNumber := strings.ReplaceAll(req.SerialNumber, "'", "''")
-
-		query := fmt.Sprintf(`
-			UPDATE reference_network_mfps
-			SET address_id = %d, model = '%s', ip = '%s', hostname = %s, serial_number = '%s'
-			WHERE id = %d
-		`, req.AddressID, escapedModel, escapedIP, escapedHostname, escapedSerialNumber, id)
-
-		if err := ExecDB(query); err != nil {
+		// Используем параметризованный запрос вместо конкатенации
+		if err := execSafe(
+			"UPDATE reference_network_mfps SET address_id = ?, model = ?, ip = ?, hostname = ?, serial_number = ? WHERE id = ?",
+			req.AddressID, req.Model, req.IP, req.Hostname, req.SerialNumber, id,
+		); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1537,7 +1583,7 @@ func apiReferenceNetworkMFPsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := ExecDB(fmt.Sprintf("DELETE FROM reference_network_mfps WHERE id = %d", id)); err != nil {
+		if err := execSafe("DELETE FROM reference_network_mfps WHERE id = ?", id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1617,16 +1663,11 @@ func apiReferenceIPPhonesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedEmployeeFullName := strings.ReplaceAll(req.EmployeeFullName, "'", "''")
-		escapedIP := strings.ReplaceAll(req.IP, "'", "''")
-
-		query := fmt.Sprintf(`
-			INSERT INTO reference_ip_phones (address_id, employee_full_name, ip)
-			VALUES (%d, '%s', '%s')
-		`, req.AddressID, escapedEmployeeFullName, escapedIP)
-
-		if err := ExecDB(query); err != nil {
+		// Используем параметризованный запрос для безопасной вставки
+		if err := execSafe(
+			"INSERT INTO reference_ip_phones (address_id, employee_full_name, ip) VALUES (?, ?, ?)",
+			req.AddressID, req.EmployeeFullName, req.IP,
+		); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint") {
 				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(map[string]string{"error": "Телефон с таким IP адресом уже существует"})
@@ -1673,17 +1714,11 @@ func apiReferenceIPPhonesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedEmployeeFullName := strings.ReplaceAll(req.EmployeeFullName, "'", "''")
-		escapedIP := strings.ReplaceAll(req.IP, "'", "''")
-
-		query := fmt.Sprintf(`
-			UPDATE reference_ip_phones
-			SET address_id = %d, employee_full_name = '%s', ip = '%s'
-			WHERE id = %d
-		`, req.AddressID, escapedEmployeeFullName, escapedIP, id)
-
-		if err := ExecDB(query); err != nil {
+		// Используем параметризованный запрос для безопасного обновления
+		if err := execSafe(
+			"UPDATE reference_ip_phones SET address_id = ?, employee_full_name = ?, ip = ? WHERE id = ?",
+			req.AddressID, req.EmployeeFullName, req.IP, id,
+		); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1701,7 +1736,7 @@ func apiReferenceIPPhonesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := ExecDB(fmt.Sprintf("DELETE FROM reference_ip_phones WHERE id = %d", id)); err != nil {
+		if err := execSafe("DELETE FROM reference_ip_phones WHERE id = ?", id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1763,11 +1798,8 @@ func apiCredentialsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		escapedUsername := strings.ReplaceAll(req.Username, "'", "''")
-		escapedPassword := strings.ReplaceAll(encryptedPassword, "'", "''")
-
-		query := fmt.Sprintf("INSERT INTO credentials (username, password) VALUES ('%s', '%s')", escapedUsername, escapedPassword)
-		if err := ExecDB(query); err != nil {
+		query := "INSERT INTO credentials (username, password) VALUES (?, ?)"
+		if err := execSafe(query, req.Username, encryptedPassword); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1779,7 +1811,7 @@ func apiCredentialsHandler(w http.ResponseWriter, r *http.Request) {
 	case "PUT":
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/credentials/")
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
+		if err != nil || !validateID(id) {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Некорректный ID учётной записи"})
 			return
@@ -1800,9 +1832,8 @@ func apiCredentialsHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		escapedUsername := strings.ReplaceAll(req.Username, "'", "''")
-		query := fmt.Sprintf("UPDATE credentials SET username = '%s' WHERE id = %d", escapedUsername, id)
-		if err := ExecDB(query); err != nil {
+		query := "UPDATE credentials SET username = ? WHERE id = ?"
+		if err := execSafe(query, req.Username, id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1814,21 +1845,24 @@ func apiCredentialsHandler(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/credentials/")
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
+		if err != nil || !validateID(id) {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Некорректный ID учётной записи"})
 			return
 		}
 
 		// Проверяем, используется ли учётная запись в задачах
-		usedInTasks, _ := QueryDB(fmt.Sprintf("SELECT id FROM task_hosts WHERE credential_id = %d LIMIT 1", id))
-		if len(usedInTasks) > 0 {
+		usedInTasks, err := querySingleInt("SELECT id FROM task_hosts WHERE credential_id = ? LIMIT 1", id)
+		if err != nil && err.Error() != "sql: no rows in result set" {
+			log.Printf("Ошибка проверки использования учётной записи в задачах: %v", err)
+		}
+		if usedInTasks > 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Нельзя удалить учётную запись, так как она используется в задачах"})
 			return
 		}
 
-		if err := ExecDB(fmt.Sprintf("DELETE FROM credentials WHERE id = %d", id)); err != nil {
+		if err := execSafe("DELETE FROM credentials WHERE id = ?", id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1896,16 +1930,11 @@ func apiScriptsHandler(w http.ResponseWriter, r *http.Request) {
 			req.ParametersSchema = "{}"
 		}
 
-		escapedName := strings.ReplaceAll(req.Name, "'", "''")
-		escapedPath := strings.ReplaceAll(req.Path, "'", "''")
-		escapedParams := strings.ReplaceAll(req.ParametersSchema, "'", "''")
-		escapedDesc := strings.ReplaceAll(req.Description, "'", "''")
-
-		query := fmt.Sprintf(
-			"INSERT INTO scripts (name, path, parameters_schema, description) VALUES ('%s', '%s', '%s', '%s')",
-			escapedName, escapedPath, escapedParams, escapedDesc,
-		)
-		if err := ExecDB(query); err != nil {
+		// Используем параметризованный запрос для безопасной вставки
+		if err := execSafe(
+			"INSERT INTO scripts (name, path, parameters_schema, description) VALUES (?, ?, ?, ?)",
+			req.Name, req.Path, req.ParametersSchema, req.Description,
+		); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1953,16 +1982,11 @@ func apiScriptsHandler(w http.ResponseWriter, r *http.Request) {
 			req.ParametersSchema = "{}"
 		}
 
-		escapedName := strings.ReplaceAll(req.Name, "'", "''")
-		escapedPath := strings.ReplaceAll(req.Path, "'", "''")
-		escapedParams := strings.ReplaceAll(req.ParametersSchema, "'", "''")
-		escapedDesc := strings.ReplaceAll(req.Description, "'", "''")
-
-		query := fmt.Sprintf(
-			"UPDATE scripts SET name = '%s', path = '%s', parameters_schema = '%s', description = '%s' WHERE id = %d",
-			escapedName, escapedPath, escapedParams, escapedDesc, id,
-		)
-		if err := ExecDB(query); err != nil {
+		// Используем параметризованный запрос для безопасного обновления
+		if err := execSafe(
+			"UPDATE scripts SET name = ?, path = ?, parameters_schema = ?, description = ? WHERE id = ?",
+			req.Name, req.Path, req.ParametersSchema, req.Description, id,
+		); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -1974,21 +1998,24 @@ func apiScriptsHandler(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/scripts/")
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
+		if err != nil || !validateID(id) {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Некорректный ID скрипта"})
 			return
 		}
 
 		// Проверяем, используется ли скрипт в задачах
-		usedInTasks, _ := QueryDB(fmt.Sprintf("SELECT id FROM task_scripts WHERE script_id = %d LIMIT 1", id))
-		if len(usedInTasks) > 0 {
+		usedInTasks, err := querySingleInt("SELECT id FROM task_scripts WHERE script_id = ? LIMIT 1", id)
+		if err != nil && err.Error() != "sql: no rows in result set" {
+			log.Printf("Ошибка проверки использования скрипта в задачах: %v", err)
+		}
+		if usedInTasks > 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Нельзя удалить скрипт, так как он используется в задачах"})
 			return
 		}
 
-		if err := ExecDB(fmt.Sprintf("DELETE FROM scripts WHERE id = %d", id)); err != nil {
+		if err := execSafe("DELETE FROM scripts WHERE id = ?", id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
 			return
@@ -2066,16 +2093,11 @@ func apiTasksHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранируем название и описание
-		escapedName := strings.ReplaceAll(req.Name, "'", "''")
-		escapedDesc := strings.ReplaceAll(req.Description, "'", "''")
-
-		// Создаём задачу
-		query := fmt.Sprintf(
-			"INSERT INTO tasks (name, description, status) VALUES ('%s', '%s', 'pending')",
-			escapedName, escapedDesc,
-		)
-		if err := ExecDB(query); err != nil {
+		// Используем параметризованный запрос для безопасной вставки
+		if err := execSafe(
+			"INSERT INTO tasks (name, description, status) VALUES (?, ?, 'pending')",
+			req.Name, req.Description,
+		); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка создания задачи"})
 			return
@@ -2092,31 +2114,28 @@ func apiTasksHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Добавляем хосты в задачу
 		for _, hostID := range req.HostIDs {
-			query = fmt.Sprintf(
-				"INSERT INTO task_hosts (task_id, host_id, credential_id) VALUES (%d, %d, %d)",
+			if err := execSafe(
+				"INSERT INTO task_hosts (task_id, host_id, credential_id) VALUES (?, ?, ?)",
 				taskID, hostID, req.CredentialID,
-			)
-			if err := ExecDB(query); err != nil {
+			); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка добавления хоста в задачу"})
 				// Откатываем создание задачи
-				ExecDB(fmt.Sprintf("DELETE FROM tasks WHERE id = %d", taskID))
+				execSafe("DELETE FROM tasks WHERE id = ?", taskID)
 				return
 			}
 		}
 
 		// Добавляем команды bash
 		for idx, cmd := range req.BashCommands {
-			escapedCmd := strings.ReplaceAll(cmd, "'", "''")
-			query = fmt.Sprintf(
-				"INSERT INTO task_bash_commands (task_id, command, order_index) VALUES (%d, '%s', %d)",
-				taskID, escapedCmd, idx,
-			)
-			if err := ExecDB(query); err != nil {
+			if err := execSafe(
+				"INSERT INTO task_bash_commands (task_id, command, order_index) VALUES (?, ?, ?)",
+				taskID, cmd, idx,
+			); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка добавления команды bash"})
 				// Откатываем создание задачи
-				ExecDB(fmt.Sprintf("DELETE FROM tasks WHERE id = %d", taskID))
+				execSafe("DELETE FROM tasks WHERE id = ?", taskID)
 				return
 			}
 		}
@@ -2128,7 +2147,7 @@ func apiTasksHandler(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusBadRequest)
 				json.NewEncoder(w).Encode(map[string]string{"error": "Некорректный ID скрипта"})
 				// Откатываем создание задачи
-				ExecDB(fmt.Sprintf("DELETE FROM tasks WHERE id = %d", taskID))
+				execSafe("DELETE FROM tasks WHERE id = ?", taskID)
 				return
 			}
 			scriptID := int(scriptIDFloat)
@@ -2138,16 +2157,14 @@ func apiTasksHandler(w http.ResponseWriter, r *http.Request) {
 				params = "{}"
 			}
 			
-			escapedParams := strings.ReplaceAll(params, "'", "''")
-			query = fmt.Sprintf(
-				"INSERT INTO task_scripts (task_id, script_id, parameters, order_index) VALUES (%d, %d, '%s', %d)",
-				taskID, scriptID, escapedParams, idx,
-			)
-			if err := ExecDB(query); err != nil {
+			if err := execSafe(
+				"INSERT INTO task_scripts (task_id, script_id, parameters, order_index) VALUES (?, ?, ?, ?)",
+				taskID, scriptID, params, idx,
+			); err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка добавления скрипта"})
 				// Откатываем создание задачи
-				ExecDB(fmt.Sprintf("DELETE FROM tasks WHERE id = %d", taskID))
+				execSafe("DELETE FROM tasks WHERE id = ?", taskID)
 				return
 			}
 		}
@@ -2180,14 +2197,11 @@ func apiTasksHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		escapedName := strings.ReplaceAll(req.Name, "'", "''")
-		escapedDesc := strings.ReplaceAll(req.Description, "'", "''")
-
-		query := fmt.Sprintf(
-			"UPDATE tasks SET name = '%s', description = '%s' WHERE id = %d",
-			escapedName, escapedDesc, id,
-		)
-		if err := ExecDB(query); err != nil {
+		// Используем параметризованный запрос для безопасного обновления
+		if err := execSafe(
+			"UPDATE tasks SET name = ?, description = ? WHERE id = ?",
+			req.Name, req.Description, id,
+		); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка обновления задачи"})
 			return
@@ -2199,14 +2213,14 @@ func apiTasksHandler(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		idStr := strings.TrimPrefix(r.URL.Path, "/api/tasks/")
 		id, err := strconv.Atoi(idStr)
-		if err != nil {
+		if err != nil || !validateID(id) {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Некорректный ID задачи"})
 			return
 		}
 
 		// Удаляем задачу (каскадное удаление удалит связанные записи)
-		if err := ExecDB(fmt.Sprintf("DELETE FROM tasks WHERE id = %d", id)); err != nil {
+		if err := execSafe("DELETE FROM tasks WHERE id = ?", id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка удаления задачи"})
 			return
@@ -2251,15 +2265,41 @@ func apiTaskControlHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Action {
 	case "start":
+		taskMutex.Lock()
+		defer taskMutex.Unlock()
+		
+		// Проверяем, не запущена ли уже задача
+		if _, exists := runningTasks[taskID]; exists {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Задача уже запущена"})
+			return
+		}
+		
 		// Здесь должна быть логика запуска задачи (в реальном приложении)
 		// Для упрощения просто обновляем статус
-		ExecDB(fmt.Sprintf("UPDATE tasks SET status = 'running', updated_at = CURRENT_TIMESTAMP WHERE id = %d", taskID))
+		if err := execSafe("UPDATE tasks SET status = 'running', updated_at = CURRENT_TIMESTAMP WHERE id = ?", taskID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка обновления статуса задачи"})
+			return
+		}
 		logPanel("Запущена задача #" + strconv.Itoa(taskID))
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Задача запущена"})
 
 	case "stop":
-		// Здесь должна быть логика остановки задачи (в реальном приложении)
-		ExecDB(fmt.Sprintf("UPDATE tasks SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE id = %d", taskID))
+		taskMutex.Lock()
+		defer taskMutex.Unlock()
+		
+		// Останавливаем задачу, если она запущена
+		if stopChan, exists := runningTasks[taskID]; exists {
+			close(stopChan)
+			delete(runningTasks, taskID)
+		}
+		
+		if err := execSafe("UPDATE tasks SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", taskID); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка обновления статуса задачи"})
+			return
+		}
 		logPanel("Остановлена задача #" + strconv.Itoa(taskID))
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "message": "Задача остановлена"})
 
@@ -2317,7 +2357,7 @@ func apiExecuteCommandHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Получаем данные хоста из нового справочника
-	query := fmt.Sprintf(`
+	query := `
 		SELECT h.id, h.ip, h.ssh_port, h.enabled,
 		       a.street, a.building, a.cabinet, a.corridor, a.floor, a.service_room,
 		       e.full_name as employee_full_name, e.short_name as employee_short_name,
@@ -2325,14 +2365,14 @@ func apiExecuteCommandHandler(w http.ResponseWriter, r *http.Request) {
 		FROM reference_hosts h
 		JOIN reference_addresses a ON h.address_id = a.id
 		LEFT JOIN reference_employees e ON h.employee_id = e.id
-		JOIN credentials c ON c.id = %d
-		WHERE h.id = %d AND h.enabled = 1
-	`, req.CredentialID, req.HostID)
+		JOIN credentials c ON c.id = ?
+		WHERE h.id = ? AND h.enabled = 1
+	`
 
 	logDiagnostic("BASH-конструктор: Сформирован запрос к БД")
 	logDiagnostic("  Query: " + query)
 
-	rows, err := QueryDB(query)
+	rows, err := querySafe(query, req.CredentialID, req.HostID)
 	if err != nil {
 		logDiagnostic("BASH-конструктор: Ошибка выполнения запроса к БД: " + err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
@@ -2343,14 +2383,14 @@ func apiExecuteCommandHandler(w http.ResponseWriter, r *http.Request) {
 	logDiagnostic("BASH-конструктор: Получено строк из БД: " + strconv.Itoa(len(rows)))
 
 	if len(rows) == 0 {
-		hostCheck, _ := QueryDB(fmt.Sprintf("SELECT id FROM reference_hosts WHERE id = %d", req.HostID))
-		credCheck, _ := QueryDB(fmt.Sprintf("SELECT id FROM credentials WHERE id = %d", req.CredentialID))
+		hostCheck, _ := querySingleInt("SELECT id FROM reference_hosts WHERE id = ?", req.HostID)
+		credCheck, _ := querySingleInt("SELECT id FROM credentials WHERE id = ?", req.CredentialID)
 		
 		var errorMsg string
-		if len(hostCheck) == 0 {
+		if hostCheck == 0 {
 			errorMsg = "Хост с ID " + strconv.Itoa(req.HostID) + " не найден или отключён"
 			logDiagnostic("BASH-конструктор: Хост не найден. Проверка: " + errorMsg)
-		} else if len(credCheck) == 0 {
+		} else if credCheck == 0 {
 			errorMsg = "Учётная запись с ID " + strconv.Itoa(req.CredentialID) + " не найдена"
 			logDiagnostic("BASH-конструктор: Учётная запись не найдена. Проверка: " + errorMsg)
 		} else {
@@ -2426,39 +2466,39 @@ log.Fatalf("Ошибка инициализации шаблонов: %v", err)
 // Статические файлы из embedded FS
 http.Handle("/static/", frontend.StaticFileServer(http.FS(frontend.StaticFS)))
 
-http.HandleFunc("/", indexHandler)
-http.HandleFunc("/login", loginHandler)
-http.HandleFunc("/logout", logoutHandler)
+http.HandleFunc("/", recoverMiddleware(indexHandler))
+http.HandleFunc("/login", recoverMiddleware(loginHandler))
+http.HandleFunc("/logout", recoverMiddleware(logoutHandler))
 
 // Справочники
-http.HandleFunc("/api/reference/addresses", authMiddleware(apiReferenceAddressesHandler))
-http.HandleFunc("/api/reference/addresses/", authMiddleware(apiReferenceAddressesHandler))
-http.HandleFunc("/api/reference/employees", authMiddleware(apiReferenceEmployeesHandler))
-http.HandleFunc("/api/reference/employees/", authMiddleware(apiReferenceEmployeesHandler))
-http.HandleFunc("/api/reference/workstations", authMiddleware(apiReferenceWorkstationsHandler))
-http.HandleFunc("/api/reference/workstations/", authMiddleware(apiReferenceWorkstationsHandler))
-http.HandleFunc("/api/reference/hosts", authMiddleware(apiReferenceHostsHandler))
-http.HandleFunc("/api/reference/hosts/", authMiddleware(apiReferenceHostsHandler))
-http.HandleFunc("/api/reference/network-equipment", authMiddleware(apiReferenceNetworkEquipmentHandler))
-http.HandleFunc("/api/reference/network-equipment/", authMiddleware(apiReferenceNetworkEquipmentHandler))
-http.HandleFunc("/api/reference/network-mfps", authMiddleware(apiReferenceNetworkMFPsHandler))
-http.HandleFunc("/api/reference/network-mfps/", authMiddleware(apiReferenceNetworkMFPsHandler))
-http.HandleFunc("/api/reference/ip-phones", authMiddleware(apiReferenceIPPhonesHandler))
-http.HandleFunc("/api/reference/ip-phones/", authMiddleware(apiReferenceIPPhonesHandler))
+http.HandleFunc("/api/reference/addresses", recoverMiddleware(authMiddleware(apiReferenceAddressesHandler)))
+http.HandleFunc("/api/reference/addresses/", recoverMiddleware(authMiddleware(apiReferenceAddressesHandler)))
+http.HandleFunc("/api/reference/employees", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
+http.HandleFunc("/api/reference/employees/", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
+http.HandleFunc("/api/reference/workstations", recoverMiddleware(authMiddleware(apiReferenceWorkstationsHandler)))
+http.HandleFunc("/api/reference/workstations/", recoverMiddleware(authMiddleware(apiReferenceWorkstationsHandler)))
+http.HandleFunc("/api/reference/hosts", recoverMiddleware(authMiddleware(apiReferenceHostsHandler)))
+http.HandleFunc("/api/reference/hosts/", recoverMiddleware(authMiddleware(apiReferenceHostsHandler)))
+http.HandleFunc("/api/reference/network-equipment", recoverMiddleware(authMiddleware(apiReferenceNetworkEquipmentHandler)))
+http.HandleFunc("/api/reference/network-equipment/", recoverMiddleware(authMiddleware(apiReferenceNetworkEquipmentHandler)))
+http.HandleFunc("/api/reference/network-mfps", recoverMiddleware(authMiddleware(apiReferenceNetworkMFPsHandler)))
+http.HandleFunc("/api/reference/network-mfps/", recoverMiddleware(authMiddleware(apiReferenceNetworkMFPsHandler)))
+http.HandleFunc("/api/reference/ip-phones", recoverMiddleware(authMiddleware(apiReferenceIPPhonesHandler)))
+http.HandleFunc("/api/reference/ip-phones/", recoverMiddleware(authMiddleware(apiReferenceIPPhonesHandler)))
 
 // Существующие эндпоинты (обновлены для работы с новой схемой)
-http.HandleFunc("/api/credentials", authMiddleware(apiCredentialsHandler))
-http.HandleFunc("/api/credentials/", authMiddleware(apiCredentialsHandler))
-http.HandleFunc("/api/scripts", authMiddleware(apiScriptsHandler))
-http.HandleFunc("/api/scripts/", authMiddleware(apiScriptsHandler))
-http.HandleFunc("/api/tasks", authMiddleware(apiTasksHandler))
-http.HandleFunc("/api/tasks/", authMiddleware(apiTaskControlHandler))
-http.HandleFunc("/api/logs", authMiddleware(apiLogsHandler))
-http.HandleFunc("/api/execute-command", authMiddleware(apiExecuteCommandHandler))
-http.HandleFunc("/api/user", authMiddleware(apiUserHandler))
+http.HandleFunc("/api/credentials", recoverMiddleware(authMiddleware(apiCredentialsHandler)))
+http.HandleFunc("/api/credentials/", recoverMiddleware(authMiddleware(apiCredentialsHandler)))
+http.HandleFunc("/api/scripts", recoverMiddleware(authMiddleware(apiScriptsHandler)))
+http.HandleFunc("/api/scripts/", recoverMiddleware(authMiddleware(apiScriptsHandler)))
+http.HandleFunc("/api/tasks", recoverMiddleware(authMiddleware(apiTasksHandler)))
+http.HandleFunc("/api/tasks/", recoverMiddleware(authMiddleware(apiTaskControlHandler)))
+http.HandleFunc("/api/logs", recoverMiddleware(authMiddleware(apiLogsHandler)))
+http.HandleFunc("/api/execute-command", recoverMiddleware(authMiddleware(apiExecuteCommandHandler)))
+http.HandleFunc("/api/user", recoverMiddleware(authMiddleware(apiUserHandler)))
 
 // Обработчик для загрузки контента разделов через HTMX
-http.HandleFunc("/api/content/", authMiddleware(contentSectionHandler))
+http.HandleFunc("/api/content/", recoverMiddleware(authMiddleware(contentSectionHandler)))
 }
 
 func main() {
