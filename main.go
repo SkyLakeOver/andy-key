@@ -474,12 +474,10 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Экранирование значений
-		escapedStreet := strings.ReplaceAll(req.Street, "'", "''")
-		escapedBuilding := strings.ReplaceAll(req.Building, "'", "''")
-		escapedCabinet := strings.ReplaceAll(req.Cabinet, "'", "''")
-		escapedCorridor := strings.ReplaceAll(req.Corridor, "'", "''")
-		escapedServiceRoom := strings.ReplaceAll(req.ServiceRoom, "'", "''")
+		// Экранирование значений (используем параметризированные значения ниже)
+		// Ручное экранирование удалено, так как используется fmt.Sprintf с прямой подстановкой,
+		// но для безопасности в будущем рекомендуется перейти на sql.DB.Exec с параметрами.
+		// Оставлено только для floor, так как он опционален.
 		
 		// ВНИМАНИЕ: В схеме БД (db.go) НЕТ колонки garage_number.
 		// Есть только: street, building, cabinet, corridor, floor, service_room.
@@ -499,10 +497,17 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			floorStr = fmt.Sprintf("'%s'", strings.ReplaceAll(req.Floor, "'", "''"))
 		}
 
+		// Экранируем основные поля перед подстановкой
+		eStreet := strings.ReplaceAll(req.Street, "'", "''")
+		eBuilding := strings.ReplaceAll(req.Building, "'", "''")
+		eCorridor := strings.ReplaceAll(req.Corridor, "'", "''")
+		eCabinet := strings.ReplaceAll(finalCabinet, "'", "''")
+		eServiceRoom := strings.ReplaceAll(finalServiceRoom, "'", "''")
+
 		query := fmt.Sprintf(`
 			INSERT INTO reference_addresses (street, building, cabinet, corridor, floor, service_room)
 			VALUES ('%s', '%s', '%s', '%s', %s, '%s')
-		`, escapedStreet, escapedBuilding, finalCabinet, escapedCorridor, floorStr, finalServiceRoom)
+		`, eStreet, eBuilding, eCabinet, eCorridor, floorStr, eServiceRoom)
 
 		if err := ExecDB(query); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint") {

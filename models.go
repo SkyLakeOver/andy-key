@@ -209,3 +209,8 @@ parts = append(parts, serviceRoom)
 }
 return strings.Join(parts, ", ")
 }
+
+// TaskControlRequest используется для управления задачами (старт/стоп)
+type TaskControlRequest struct {
+	Action string `json:"action"` // "start", "stop", "restart"
+}
