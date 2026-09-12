@@ -7,12 +7,13 @@ import (
 
 // AddressRequest представляет запрос на создание/обновление адреса
 type AddressRequest struct {
-Street      string `json:"street"`
-Building    string `json:"building"`
-Cabinet     string `json:"cabinet"`      // Номер кабинета ИЛИ номер гаража
-Corridor    string `json:"corridor"`
-Floor       string `json:"floor"`
-ServiceRoom string `json:"service_room"` // Тип служебного помещения: server_room, warehouse, office, garage, other
+	Street      string `json:"street"`
+	Building    string `json:"building"`
+	Cabinet     string `json:"cabinet"`      // Номер кабинета или описание для служебного помещения
+	Corridor    string `json:"corridor"`
+	Floor       string `json:"floor"`
+	ServiceRoom string `json:"service_room"` // Тип служебного помещения: server_room, warehouse, office, garage, other
+	Description string `json:"description"`  // Текстовое описание для служебных помещений (гараж, склад и т.д.)
 }
 
 // Validate проверяет корректность данных адреса
