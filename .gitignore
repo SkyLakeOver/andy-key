@@ -83,3 +83,12 @@ htmlcov/
 *.tar.xz
 *.tar.zst
 ```
+# Logs directory
+logs/
+
+# Build artifacts
+andy-key
+andy-key.exe
+
+# Key files
+*.key

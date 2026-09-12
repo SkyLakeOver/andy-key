@@ -211,8 +211,18 @@ document.addEventListener('alpine:init', () => {
         get filteredAddresses() {
             return this.addresses.filter(addr => {
                 const s = this.searchQuery.toLowerCase();
-                const matchesSearch = addr.address.toLowerCase().includes(s) || (addr.description && addr.description.toLowerCase().includes(s));
+                // Безопасно собираем все возможные текстовые поля адреса в одну строку
+                const street = addr.street || addr.address || '';
+                const building = addr.building || '';
+                const cabinet = addr.cabinet || '';
+                const description = addr.description || '';
+                const type = addr.type || '';
+                
+                const searchString = `${street} ${building} ${cabinet} ${description} ${type}`.toLowerCase();
+                
+                const matchesSearch = searchString.includes(s);
                 const matchesType = !this.filterType || addr.type === this.filterType;
+                
                 return matchesSearch && matchesType;
             });
         },
