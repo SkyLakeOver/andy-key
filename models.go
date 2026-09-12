@@ -17,36 +17,36 @@ ServiceRoom string `json:"service_room"` // Тип служебного поме
 
 // Validate проверяет корректность данных адреса
 func (a AddressRequest) Validate() error {
-// Обязательные поля для любого адреса
-if a.Street == "" || a.Building == "" {
-return fmt.Errorf("улица и дом обязательны для заполнения")
-}
+	// Обязательные поля для любого адреса
+	if a.Street == "" || a.Building == "" {
+		return fmt.Errorf("улица и дом обязательны для заполнения")
+	}
 
-// Проверяем, что заполнено хотя бы одно поле типа адреса
-hasCabinet := a.Cabinet != ""
-hasCorridor := a.Corridor != ""
-hasServiceRoom := a.ServiceRoom != ""
+	// Проверяем, что заполнено хотя бы одно поле типа адреса
+	hasCabinet := a.Cabinet != ""
+	hasCorridor := a.Corridor != ""
+	hasServiceRoom := a.ServiceRoom != ""
 
-if !hasCabinet && !hasCorridor && !hasServiceRoom {
-return fmt.Errorf("необходимо указать тип адреса: кабинет, коридор или служебное помещение")
-}
+	if !hasCabinet && !hasCorridor && !hasServiceRoom {
+		return fmt.Errorf("необходимо заполнить: номер кабинета, либо коридор, либо тип служебного помещения")
+	}
 
-// Если выбран коридор, этаж обязателен
-if hasCorridor && a.Floor == "" {
-return fmt.Errorf("при выборе коридора необходимо указать этаж")
-}
+	// Если выбран коридор, этаж обязателен
+	if hasCorridor && a.Floor == "" {
+		return fmt.Errorf("при выборе коридора необходимо указать этаж")
+	}
 
-// Если выбран коридор, этаж должен быть в диапазоне 1-5
-if hasCorridor {
-var floor int
-fmt.Sscanf(a.Floor, "%d", &floor)
-if floor < 1 || floor > 5 {
-return fmt.Errorf("этаж должен быть в диапазоне от 1 до 5")
-}
-}
+	// Если выбран коридор, этаж должен быть в диапазоне 1-5
+	if hasCorridor {
+		var floor int
+		fmt.Sscanf(a.Floor, "%d", &floor)
+		if floor < 1 || floor > 5 {
+			return fmt.Errorf("этаж должен быть в диапазоне от 1 до 5")
+		}
+	}
 
-// Валидация пройдена
-return nil
+	// Валидация пройдена
+	return nil
 }
 
 // WorkstationRequest представляет запрос на создание/обновление АРМ
