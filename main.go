@@ -159,12 +159,91 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 	// Проверяем, это HTMX-запрос или обычный
 	isHtmx := r.Header.Get("HX-Request") == "true"
 
+	// Загружаем данные из БД в зависимости от раздела
+	data := make(map[string]interface{})
+	var dbError error
+	
+	switch section {
+	case "addresses":
+		rows, err := QueryDB(`SELECT id, street, building, cabinet, corridor, floor, service_room, created_at FROM reference_addresses ORDER BY street, building`)
+		if err != nil {
+			dbError = err
+		} else {
+			data["addresses"] = rows
+		}
+	case "employees":
+		rows, err := QueryDB(`SELECT id, full_name, short_name, phone_city, phone_internal, address_id, created_at FROM reference_employees ORDER BY full_name`)
+		if err != nil {
+			dbError = err
+		} else {
+			data["employees"] = rows
+		}
+	case "workstations":
+		rows, err := QueryDB(`SELECT w.id, w.inventory_number, w.serial_number, w.seal_numbers, w.monitor_count, w.employee_id, w.replacement_done, w.replacement_date, w.replacement_letter, w.address_id, 
+		                     e.full_name as employee_name, a.street, a.building 
+		                     FROM reference_workstations w
+		                     LEFT JOIN reference_employees e ON w.employee_id = e.id
+		                     LEFT JOIN reference_addresses a ON w.address_id = a.id
+		                     ORDER BY a.street, a.building, w.inventory_number`)
+		if err != nil {
+			dbError = err
+		} else {
+			data["workstations"] = rows
+		}
+	case "hosts":
+		rows, err := QueryDB(`SELECT h.id, h.ip, h.ssh_port, h.address_id, h.employee_id,
+		                     e.full_name as employee_name, a.street, a.building
+		                     FROM reference_hosts h
+		                     LEFT JOIN reference_employees e ON h.employee_id = e.id
+		                     LEFT JOIN reference_addresses a ON h.address_id = a.id
+		                     ORDER BY h.ip`)
+		if err != nil {
+			dbError = err
+		} else {
+			data["hosts"] = rows
+		}
+	case "network-equipment":
+		rows, err := QueryDB(`SELECT id, name, ip, mac, model, serial_number, location, firmware, config_backup, last_check, status, address_id, created_at FROM reference_network_equipment ORDER BY name`)
+		if err != nil {
+			dbError = err
+		} else {
+			data["equipment"] = rows
+		}
+	case "network-mfps":
+		rows, err := QueryDB(`SELECT m.id, m.name, m.ip, m.mac, m.model, m.serial_number, m.location, m.firmware, m.config_backup, m.last_check, m.status, m.address_id,
+		                     a.street, a.building
+		                     FROM reference_network_mfps m
+		                     LEFT JOIN reference_addresses a ON m.address_id = a.id
+		                     ORDER BY m.name`)
+		if err != nil {
+			dbError = err
+		} else {
+			data["mfps"] = rows
+		}
+	case "ip-phones":
+		rows, err := QueryDB(`SELECT p.id, p.name, p.ip, p.mac, p.model, p.serial_number, p.extension, p.sip_server, p.status, p.address_id,
+		                     a.street, a.building
+		                     FROM reference_ip_phones p
+		                     LEFT JOIN reference_addresses a ON p.address_id = a.id
+		                     ORDER BY p.name`)
+		if err != nil {
+			dbError = err
+		} else {
+			data["phones"] = rows
+		}
+	}
+
 	if isHtmx {
 		// Для HTMX рендерим только фрагмент контента (без layout)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		
+		// Добавляем информацию об ошибке БД в данные
+		if dbError != nil {
+			data["dbError"] = dbError.Error()
+		}
+		
 		// Пробуем рендерить шаблон, если его нет - выводим заглушку
-		err := templates.ExecuteTemplate(w, templateName, nil)
+		err := templates.ExecuteTemplate(w, templateName, data)
 		if err != nil {
 			// Шаблон не найден, выводим временную заглушку
 			fmt.Fprintf(w, `<div class="placeholder-content">
@@ -175,12 +254,19 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		// Для обычного запроса рендерим полную страницу с layout
-		data := map[string]interface{}{
+		pageData := map[string]interface{}{
 			"Section":    section,
 			"FooterText": footerText,
 			"AppVersion": CURRENT_SCHEMA_VERSION,
 		}
-		if err := templates.ExecuteTemplate(w, "index", data); err != nil {
+		// Добавляем данные из БД
+		for k, v := range data {
+			pageData[k] = v
+		}
+		if dbError != nil {
+			pageData["dbError"] = dbError.Error()
+		}
+		if err := templates.ExecuteTemplate(w, "index", pageData); err != nil {
 			http.Error(w, "Ошибка рендеринга: "+err.Error(), http.StatusInternalServerError)
 			return
 		}

@@ -4,8 +4,25 @@ document.addEventListener('alpine:init', () => {
     // Глобальное состояние приложения
     Alpine.data('app', () => ({
         activeTab: 'tasks',
-        pageTitle: 'Задачи',
         currentUser: '',
+        
+        get pageTitle() {
+            const titles = {
+                'tasks': 'Задачи',
+                'credentials': 'Учётные записи SSH',
+                'scripts': 'Скрипты',
+                'bash-constructor': 'BASH-конструктор',
+                'logs': 'Журнал',
+                'addresses': 'Адреса',
+                'employees': 'Сотрудники',
+                'workstations': 'АРМ',
+                'hosts': 'Хосты',
+                'network-equipment': 'Сетевое оборудование',
+                'network-mfps': 'Сетевая оргтехника',
+                'ip-phones': 'IP телефоны'
+            };
+            return titles[this.activeTab] || 'Задачи';
+        },
         
         init() {
             fetch('/api/user')
