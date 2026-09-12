@@ -139,6 +139,24 @@ document.addEventListener('alpine:init', () => {
             fetch('/api/reference/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadEmployees(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
+        },
+        
+        editEmployee(emp) {
+            this.formData = { 
+                id: emp.id,
+                fio: emp.fio || '', 
+                position: emp.position || '', 
+                department: emp.department || '', 
+                phone: emp.phone || '', 
+                email: emp.email || '', 
+                address_id: emp.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
         }
     }));
 
@@ -187,6 +205,24 @@ document.addEventListener('alpine:init', () => {
             fetch('/api/reference/workstations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadWorkstations(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
+        },
+        
+        editWorkstation(ws) {
+            this.formData = { 
+                id: ws.id,
+                inventory_number: ws.inventory_number || '', 
+                model: ws.model || '', 
+                serial_number: ws.serial_number || '', 
+                employee_id: ws.employee_id, 
+                status: ws.status || 'active', 
+                address_id: ws.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
         }
     }));
 
@@ -254,6 +290,24 @@ document.addEventListener('alpine:init', () => {
         onAddressTypeChange() {
             // Обработка изменения типа адреса (для будущей логики)
             console.log('Тип адреса изменён на:', this.formData.type);
+        },
+        
+        editAddress(addr) {
+            this.formData = { 
+                street: addr.street || '', 
+                building: addr.building || '', 
+                cabinet: addr.cabinet || '', 
+                corridor: addr.corridor || '', 
+                floor: addr.floor || '', 
+                service_room: addr.service_room || '', 
+                type: addr.type || 'cabinet' 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
         }
     }));
 
@@ -302,6 +356,25 @@ document.addEventListener('alpine:init', () => {
             fetch('/api/reference/hosts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadHosts(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
+        },
+        
+        editHost(host) {
+            this.formData = { 
+                id: host.id,
+                hostname: host.hostname || '', 
+                ip_address: host.ip_address || '', 
+                mac_address: host.mac_address || '', 
+                os_type: host.os_type || '', 
+                location: host.location || '', 
+                enabled: host.enabled || true, 
+                address_id: host.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
         }
     }));
 
@@ -349,6 +422,25 @@ document.addEventListener('alpine:init', () => {
             fetch('/api/reference/network-equipment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadEquipment(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
+        },
+        
+        editEquipment(eq) {
+            this.formData = { 
+                id: eq.id,
+                name: eq.name || '', 
+                model: eq.model || '', 
+                serial_number: eq.serial_number || '', 
+                ip_address: eq.ip_address || '', 
+                location: eq.location || '', 
+                type: eq.type || 'switch', 
+                address_id: eq.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
         }
     }));
 
@@ -394,6 +486,24 @@ document.addEventListener('alpine:init', () => {
             fetch('/api/reference/network-mfps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadMfps(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
+        },
+        
+        editMfp(mfp) {
+            this.formData = { 
+                id: mfp.id,
+                name: mfp.name || '', 
+                model: mfp.model || '', 
+                serial_number: mfp.serial_number || '', 
+                ip_address: mfp.ip_address || '', 
+                location: mfp.location || '', 
+                address_id: mfp.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
         }
     }));
 
@@ -439,6 +549,25 @@ document.addEventListener('alpine:init', () => {
             fetch('/api/reference/ip-phones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadPhones(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
+        },
+        
+        editPhone(phone) {
+            this.formData = { 
+                id: phone.id,
+                name: phone.name || '', 
+                model: phone.model || '', 
+                serial_number: phone.serial_number || '', 
+                mac_address: phone.mac_address || '', 
+                extension: phone.extension || '', 
+                location: phone.location || '', 
+                address_id: phone.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
         }
     }));
 
