@@ -93,14 +93,14 @@ document.addEventListener('alpine:init', () => {
         init() { this.loadEmployees(); this.loadAddresses(); },
         
         loadEmployees() {
-            fetch('/api/employees')
+            fetch('/api/reference/employees')
                 .then(r => r.json())
                 .then(data => { this.employees = data || []; })
                 .catch(err => console.error('Ошибка загрузки сотрудников:', err));
         },
 
         loadAddresses() {
-            fetch('/api/addresses')
+            fetch('/api/reference/addresses')
                 .then(r => r.json())
                 .then(data => { this.addresses = data || []; })
                 .catch(err => console.error('Ошибка загрузки адресов:', err));
@@ -140,14 +140,14 @@ document.addEventListener('alpine:init', () => {
         init() { this.loadWorkstations(); this.loadAddresses(); },
         
         loadWorkstations() {
-            fetch('/api/workstations')
+            fetch('/api/reference/workstations')
                 .then(r => r.json())
                 .then(data => { this.workstations = data || []; })
                 .catch(err => console.error('Ошибка загрузки АРМ:', err));
         },
 
         loadAddresses() {
-            fetch('/api/addresses')
+            fetch('/api/reference/addresses')
                 .then(r => r.json())
                 .then(data => { this.addresses = data || []; })
                 .catch(err => console.error('Ошибка загрузки адресов:', err));
@@ -185,7 +185,7 @@ document.addEventListener('alpine:init', () => {
         init() { this.loadAddresses(); },
         
         loadAddresses() {
-            fetch('/api/addresses')
+            fetch('/api/reference/addresses')
                 .then(r => r.json())
                 .then(data => { this.addresses = data || []; })
                 .catch(err => console.error('Ошибка загрузки адресов:', err));
@@ -225,14 +225,14 @@ document.addEventListener('alpine:init', () => {
         init() { this.loadHosts(); this.loadAddresses(); },
         
         loadHosts() {
-            fetch('/api/hosts')
+            fetch('/api/reference/hosts')
                 .then(r => r.json())
                 .then(data => { this.hosts = data || []; })
                 .catch(err => console.error('Ошибка загрузки хостов:', err));
         },
 
         loadAddresses() {
-            fetch('/api/addresses')
+            fetch('/api/reference/addresses')
                 .then(r => r.json())
                 .then(data => { this.addresses = data || []; })
                 .catch(err => console.error('Ошибка загрузки адресов:', err));
@@ -272,14 +272,14 @@ document.addEventListener('alpine:init', () => {
         init() { this.loadEquipment(); this.loadAddresses(); },
         
         loadEquipment() {
-            fetch('/api/network-equipment')
+            fetch('/api/reference/network-equipment')
                 .then(r => r.json())
                 .then(data => { this.equipment = data || []; })
                 .catch(err => console.error('Ошибка загрузки оборудования:', err));
         },
 
         loadAddresses() {
-            fetch('/api/addresses')
+            fetch('/api/reference/addresses')
                 .then(r => r.json())
                 .then(data => { this.addresses = data || []; })
                 .catch(err => console.error('Ошибка загрузки адресов:', err));
@@ -318,14 +318,14 @@ document.addEventListener('alpine:init', () => {
         init() { this.loadMfps(); this.loadAddresses(); },
         
         loadMfps() {
-            fetch('/api/network-mfps')
+            fetch('/api/reference/network-mfps')
                 .then(r => r.json())
                 .then(data => { this.mfps = data || []; })
                 .catch(err => console.error('Ошибка загрузки МФУ:', err));
         },
 
         loadAddresses() {
-            fetch('/api/addresses')
+            fetch('/api/reference/addresses')
                 .then(r => r.json())
                 .then(data => { this.addresses = data || []; })
                 .catch(err => console.error('Ошибка загрузки адресов:', err));
@@ -363,14 +363,14 @@ document.addEventListener('alpine:init', () => {
         init() { this.loadPhones(); this.loadAddresses(); },
         
         loadPhones() {
-            fetch('/api/ip-phones')
+            fetch('/api/reference/ip-phones')
                 .then(r => r.json())
                 .then(data => { this.phones = data || []; })
                 .catch(err => console.error('Ошибка загрузки телефонов:', err));
         },
 
         loadAddresses() {
-            fetch('/api/addresses')
+            fetch('/api/reference/addresses')
                 .then(r => r.json())
                 .then(data => { this.addresses = data || []; })
                 .catch(err => console.error('Ошибка загрузки адресов:', err));
