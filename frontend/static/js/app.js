@@ -196,7 +196,7 @@ document.addEventListener('alpine:init', () => {
         filterType: '',
         showAddModal: false,
         showEditModal: false,
-        formData: { address: '', description: '', type: 'cabinet' },
+        formData: { street: '', building: '', cabinet: '', corridor: '', floor: '', service_room: '', type: 'cabinet' },
         addresses: [],
         
         init() { this.loadAddresses(); },
@@ -227,13 +227,28 @@ document.addEventListener('alpine:init', () => {
             });
         },
         
-        openAddModal() { this.formData = { address: '', description: '', type: 'cabinet' }; this.showAddModal = true; },
+        openAddModal() { this.formData = { street: '', building: '', cabinet: '', corridor: '', floor: '', service_room: '', type: 'cabinet' }; this.showAddModal = true; },
         closeAddModal() { this.showAddModal = false; },
         
         saveAddress() {
-            fetch('/api/reference/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
-            .then(r => { if (r.ok) { this.closeAddModal(); this.loadAddresses(); } else { alert('Ошибка'); } })
-            .catch(() => alert('Ошибка'));
+            fetch('/api/reference/addresses', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(this.formData) 
+            })
+            .then(async r => { 
+                if (r.ok) { 
+                    this.closeAddModal(); 
+                    this.loadAddresses(); 
+                } else { 
+                    const errData = await r.json().catch(() => ({}));
+                    alert('Ошибка: ' + (errData.error || 'Неизвестная ошибка'));
+                } 
+            })
+            .catch(err => { 
+                console.error('Ошибка сохранения адреса:', err);
+                alert('Ошибка при сохранении');
+            });
         },
         
         onAddressTypeChange() {
