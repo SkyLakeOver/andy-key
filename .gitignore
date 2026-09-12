@@ -1,4 +1,57 @@
 ```
+# Environment files
+.env
+.env.local
+.env.*
+
 # Dependencies
-app/
+node_modules/
+
+# Build artifacts
+dist/
+build/
+target/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.py~
+*.pyc~
+.Python
+venv/
+.venv/
+.env/
+
+# Go
+*.o
+*.a
+*.so
+*.exe
+*.dll
+
+# Logs
+*.log
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Cache
+.mypy_cache/
+.pytest_cache/
+.gradle/
 ```

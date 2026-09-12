@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>andy-key</title>
+    
+    <!-- HTMX для динамической загрузки контента (локальная версия) -->
+    <script src="/static/js/htmx.min.js"></script>
+    
+    <!-- Основное приложение Alpine.js (должно быть загружено ДО Alpine.js) -->
+    <script src="/static/js/app.js"></script>
+    
+    <!-- Alpine.js для реактивности на клиенте (локальная версия) -->
+    <script defer src="/static/js/alpine.min.js"></script>
+    
+    <!-- Стили -->
+    <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+    <div class="app-container" x-data="app()">
+        <!-- Боковая панель -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>andy-key</h1>
+                <div class="subtitle">Платформа автоматизации</div>
+            </div>
+            <ul class="nav-menu">
+                <!-- АДМИНИСТРИРОВАНИЕ -->
+                <li class="nav-section">
+                    <div class="nav-section-title">Администрирование</div>
+                    <ul class="nav-menu">
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'tasks'" hx-get="/api/content/tasks" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'tasks' }" class="nav-link">Задачи</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'credentials'" hx-get="/api/content/credentials" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'credentials' }" class="nav-link">Учётные записи SSH</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'scripts'" hx-get="/api/content/scripts" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'scripts' }" class="nav-link">Скрипты</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'bash-constructor'" hx-get="/api/content/bash-constructor" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'bash-constructor' }" class="nav-link">BASH-конструктор</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'logs'" hx-get="/api/content/logs" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'logs' }" class="nav-link">Журнал</a>
+                        </li>
+                    </ul>
+                </li>
+                <!-- СПРАВОЧНИКИ -->
+                <li class="nav-section">
+                    <div class="nav-section-title">Справочники</div>
+                    <ul class="nav-menu">
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'addresses'" hx-get="/api/content/addresses" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'addresses' }" class="nav-link">Адреса</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'employees'" hx-get="/api/content/employees" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'employees' }" class="nav-link">Сотрудники</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'workstations'" hx-get="/api/content/workstations" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'workstations' }" class="nav-link">АРМ</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'hosts'" hx-get="/api/content/hosts" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'hosts' }" class="nav-link">Хосты</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'network-equipment'" hx-get="/api/content/network-equipment" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'network-equipment' }" class="nav-link">Сетевое оборудование</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'network-mfps'" hx-get="/api/content/network-mfps" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'network-mfps' }" class="nav-link">Сетевая оргтехника</a>
+                        </li>
+                        <li class="nav-item">
+                            <a href="#" @click.prevent="activeTab = 'ip-phones'" hx-get="/api/content/ip-phones" hx-target="#content-area" hx-swap="innerHTML" :class="{ active: activeTab === 'ip-phones' }" class="nav-link">IP телефоны</a>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
+        </aside>
+
+        <!-- Основной контент -->
+        <main class="main-content">
+            <header class="header">
+                <h1 x-text="pageTitle"></h1>
+                <div style="display:flex;gap:10px;align-items:center;">
+                    <span id="current-user" x-text="currentUser"></span>
+                    <button @click="logout()" class="btn btn-sm">Выход</button>
+                </div>
+            </header>
+            
+            <div class="content-container">
+                <!-- Контент будет загружаться динамически через HTMX -->
+                <div id="content-area" hx-get="/api/content/tasks" hx-trigger="load" hx-swap="innerHTML">
+                    <!-- Загрузка... -->
+                </div>
+            </div>
+        </main>
+
+        <!-- Футер -->
+        <footer class="app-footer">
+            <span>andy-key &copy; 2024</span>
+            <span class="version">v2.2.0</span>
+        </footer>
+    </div>
+</body>
+</html>

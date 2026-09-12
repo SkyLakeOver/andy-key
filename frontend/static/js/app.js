@@ -1,0 +1,625 @@
+// Основное приложение Alpine.js для andy-key v2.2.0
+
+document.addEventListener('alpine:init', () => {
+    // Глобальное состояние приложения
+    Alpine.data('app', () => ({
+        activeTab: 'tasks',
+        currentUser: '',
+        
+        get pageTitle() {
+            const titles = {
+                'tasks': 'Задачи',
+                'credentials': 'Учётные записи SSH',
+                'scripts': 'Скрипты',
+                'bash-constructor': 'BASH-конструктор',
+                'logs': 'Журнал',
+                'addresses': 'Адреса',
+                'employees': 'Сотрудники',
+                'workstations': 'АРМ',
+                'hosts': 'Хосты',
+                'network-equipment': 'Сетевое оборудование',
+                'network-mfps': 'Сетевая оргтехника',
+                'ip-phones': 'IP телефоны'
+            };
+            return titles[this.activeTab] || 'Задачи';
+        },
+        
+        init() {
+            fetch('/api/user')
+                .then(response => response.json())
+                .then(data => {
+                    this.currentUser = data.username || 'Гость';
+                })
+                .catch(err => console.error('Ошибка загрузки пользователя:', err));
+        },
+        
+        logout() {
+            fetch('/logout', { method: 'POST' })
+                .then(() => { window.location.href = '/login'; })
+                .catch(() => { window.location.href = '/login'; });
+        }
+    }));
+
+    // Компонент для страницы задач
+    Alpine.data('tasksPage', () => ({
+        searchQuery: '',
+        filterStatus: 'all',
+        showAddModal: false,
+        showEditModal: false,
+        formData: { title: '', description: '', status: 'new', assignee: '', script_id: '' },
+        tasks: [],
+        scripts: [],
+
+        init() {
+            this.loadTasks();
+            this.loadScripts();
+        },
+
+        loadTasks() {
+            fetch('/api/tasks')
+                .then(r => r.json())
+                .then(data => { this.tasks = data || []; })
+                .catch(err => console.error('Ошибка загрузки задач:', err));
+        },
+
+        loadScripts() {
+            fetch('/api/scripts')
+                .then(r => r.json())
+                .then(data => { this.scripts = data || []; })
+                .catch(err => console.error('Ошибка загрузки скриптов:', err));
+        },
+
+        get filteredTasks() {
+            return this.tasks.filter(task => {
+                const s = this.searchQuery.toLowerCase();
+                const matchesSearch = task.title.toLowerCase().includes(s) || task.description.toLowerCase().includes(s);
+                const matchesStatus = this.filterStatus === 'all' || task.status === this.filterStatus;
+                return matchesSearch && matchesStatus;
+            });
+        },
+
+        openAddModal() {
+            this.formData = { title: '', description: '', status: 'new', assignee: '', script_id: '' };
+            this.showAddModal = true;
+        },
+
+        closeAddModal() { this.showAddModal = false; },
+
+        submitTask() {
+            fetch('/api/tasks', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(this.formData)
+            }).then(r => {
+                if (r.ok) { this.closeAddModal(); this.loadTasks(); }
+                else { alert('Ошибка при создании задачи'); }
+            }).catch(() => alert('Ошибка при создании задачи'));
+        }
+    }));
+
+    // Компонент для страницы сотрудников
+    Alpine.data('employeesPage', () => ({
+        searchQuery: '',
+        filterAddress: '',
+        showAddModal: false,
+        showEditModal: false,
+        formData: { fio: '', position: '', department: '', phone: '', email: '', address_id: null },
+        employees: [],
+        addresses: [],
+        
+        init() { this.loadEmployees(); this.loadAddresses(); },
+        
+        loadEmployees() {
+            fetch('/api/reference/employees')
+                .then(r => r.json())
+                .then(data => { this.employees = data || []; })
+                .catch(err => console.error('Ошибка загрузки сотрудников:', err));
+        },
+
+        loadAddresses() {
+            fetch('/api/reference/addresses')
+                .then(r => r.json())
+                .then(data => { this.addresses = data || []; })
+                .catch(err => console.error('Ошибка загрузки адресов:', err));
+        },
+        
+        get filteredEmployees() {
+            return this.employees.filter(emp => {
+                const s = this.searchQuery.toLowerCase();
+                const matchesSearch = emp.fio.toLowerCase().includes(s) || (emp.position && emp.position.toLowerCase().includes(s)) || (emp.department && emp.department.toLowerCase().includes(s));
+                const matchesAddress = !this.filterAddress || emp.address_id == this.filterAddress;
+                return matchesSearch && matchesAddress;
+            });
+        },
+        
+        openAddModal() { this.formData = { fio: '', position: '', department: '', phone: '', email: '', address_id: null }; this.showAddModal = true; },
+        closeAddModal() { this.showAddModal = false; },
+        
+        submitEmployee() {
+            fetch('/api/reference/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            .then(r => { if (r.ok) { this.closeAddModal(); this.loadEmployees(); } else { alert('Ошибка'); } })
+            .catch(() => alert('Ошибка'));
+        },
+        
+        editEmployee(emp) {
+            this.formData = { 
+                id: emp.id,
+                fio: emp.fio || '', 
+                position: emp.position || '', 
+                department: emp.department || '', 
+                phone: emp.phone || '', 
+                email: emp.email || '', 
+                address_id: emp.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
+        }
+    }));
+
+    // Компонент для страницы рабочих мест
+    Alpine.data('workstationsPage', () => ({
+        searchQuery: '',
+        filterVacant: '',
+        filterAddress: '',
+        showAddModal: false,
+        showEditModal: false,
+        formData: { inventory_number: '', model: '', serial_number: '', employee_id: null, status: 'active', address_id: null },
+        workstations: [],
+        addresses: [],
+        employees: [],
+        
+        init() { this.loadWorkstations(); this.loadAddresses(); },
+        
+        loadWorkstations() {
+            fetch('/api/reference/workstations')
+                .then(r => r.json())
+                .then(data => { this.workstations = data || []; })
+                .catch(err => console.error('Ошибка загрузки АРМ:', err));
+        },
+
+        loadAddresses() {
+            fetch('/api/reference/addresses')
+                .then(r => r.json())
+                .then(data => { this.addresses = data || []; })
+                .catch(err => console.error('Ошибка загрузки адресов:', err));
+        },
+        
+        get filteredWorkstations() {
+            return this.workstations.filter(ws => {
+                const s = this.searchQuery.toLowerCase();
+                const matchesSearch = ws.inventory_number.toLowerCase().includes(s) || (ws.model && ws.model.toLowerCase().includes(s)) || (ws.serial_number && ws.serial_number.toLowerCase().includes(s));
+                const matchesVacant = !this.filterVacant || (this.filterVacant === 'true' && !ws.employee_id) || (this.filterVacant === 'false' && ws.employee_id);
+                const matchesAddress = !this.filterAddress || ws.address_id == this.filterAddress;
+                return matchesSearch && matchesVacant && matchesAddress;
+            });
+        },
+        
+        openAddModal() { this.formData = { inventory_number: '', model: '', serial_number: '', employee_id: null, status: 'active', address_id: null }; this.showAddModal = true; },
+        closeAddModal() { this.showAddModal = false; },
+        
+        submitWorkstation() {
+            fetch('/api/reference/workstations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            .then(r => { if (r.ok) { this.closeAddModal(); this.loadWorkstations(); } else { alert('Ошибка'); } })
+            .catch(() => alert('Ошибка'));
+        },
+        
+        editWorkstation(ws) {
+            this.formData = { 
+                id: ws.id,
+                inventory_number: ws.inventory_number || '', 
+                model: ws.model || '', 
+                serial_number: ws.serial_number || '', 
+                employee_id: ws.employee_id, 
+                status: ws.status || 'active', 
+                address_id: ws.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
+        }
+    }));
+
+    // Компонент для страницы адресов
+    Alpine.data('addressesPage', () => ({
+        searchQuery: '',
+        filterType: '',
+        showAddModal: false,
+        showEditModal: false,
+        formData: { 
+            street: '', 
+            building: '', 
+            cabinet: '', 
+            corridor: '', 
+            floor: '', 
+            service_room: '', 
+            garage_number: '',
+            type: 'cabinet' 
+        },
+        addresses: [],
+        
+        init() { this.loadAddresses(); },
+        
+        loadAddresses() {
+            fetch('/api/reference/addresses')
+                .then(r => r.json())
+                .then(data => { this.addresses = data || []; })
+                .catch(err => console.error('Ошибка загрузки адресов:', err));
+        },
+        
+        get filteredAddresses() {
+            return this.addresses.filter(addr => {
+                const s = this.searchQuery.toLowerCase();
+                // Безопасно собираем все возможные текстовые поля адреса в одну строку
+                const street = addr.street || addr.address || '';
+                const building = addr.building || '';
+                const cabinet = addr.cabinet || '';
+                const description = addr.description || addr.service_room || '';
+                const type = addr.type || '';
+                const garage = addr.garage_number || '';
+                
+                const searchString = `${street} ${building} ${cabinet} ${description} ${type} ${garage}`.toLowerCase();
+                
+                const matchesSearch = searchString.includes(s);
+                const matchesType = !this.filterType || addr.type === this.filterType;
+                
+                return matchesSearch && matchesType;
+            });
+        },
+        
+        openAddModal() { 
+            this.formData = { 
+                street: '', 
+                building: '', 
+                cabinet: '', 
+                corridor: '', 
+                floor: '', 
+                service_room: '', 
+                garage_number: '',
+                type: 'cabinet' 
+            }; 
+            this.showAddModal = true; 
+        },
+        closeAddModal() { this.showAddModal = false; },
+        
+        saveAddress() {
+            fetch('/api/reference/addresses', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify(this.formData) 
+            })
+            .then(async r => { 
+                if (r.ok) { 
+                    this.closeAddModal(); 
+                    this.loadAddresses(); 
+                } else { 
+                    const errData = await r.json().catch(() => ({}));
+                    alert('Ошибка: ' + (errData.error || 'Неизвестная ошибка'));
+                } 
+            })
+            .catch(err => { 
+                console.error('Ошибка сохранения адреса:', err);
+                alert('Ошибка при сохранении');
+            });
+        },
+        
+        onAddressTypeChange() {
+            // Сброс полей при смене типа
+            if (this.formData.type !== 'cabinet') this.formData.cabinet = '';
+            if (this.formData.type !== 'corridor') {
+                this.formData.corridor = '';
+                this.formData.floor = '';
+            }
+            if (this.formData.type !== 'service') {
+                this.formData.service_room = '';
+                this.formData.garage_number = '';
+            }
+            console.log('Тип адреса изменён на:', this.formData.type);
+        },
+        
+        editAddress(addr) {
+            this.formData = { 
+                street: addr.street || '', 
+                building: addr.building || '', 
+                cabinet: addr.cabinet || '', 
+                corridor: addr.corridor || '', 
+                floor: addr.floor || '', 
+                service_room: addr.service_room || '', 
+                garage_number: addr.garage_number || '',
+                type: addr.type || 'cabinet' 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
+        }
+    }));
+
+    // Компонент для страницы хостов
+    Alpine.data('hostsPage', () => ({
+        searchQuery: '',
+        filterEnabled: '',
+        filterAddress: '',
+        showAddModal: false,
+        showEditModal: false,
+        formData: { hostname: '', ip_address: '', mac_address: '', os_type: '', location: '', enabled: true, address_id: null },
+        hosts: [],
+        addresses: [],
+        employees: [],
+        
+        init() { this.loadHosts(); this.loadAddresses(); },
+        
+        loadHosts() {
+            fetch('/api/reference/hosts')
+                .then(r => r.json())
+                .then(data => { this.hosts = data || []; })
+                .catch(err => console.error('Ошибка загрузки хостов:', err));
+        },
+
+        loadAddresses() {
+            fetch('/api/reference/addresses')
+                .then(r => r.json())
+                .then(data => { this.addresses = data || []; })
+                .catch(err => console.error('Ошибка загрузки адресов:', err));
+        },
+        
+        get filteredHosts() {
+            return this.hosts.filter(host => {
+                const s = this.searchQuery.toLowerCase();
+                const matchesSearch = host.hostname.toLowerCase().includes(s) || host.ip_address.includes(this.searchQuery) || (host.mac_address && host.mac_address.toLowerCase().includes(s));
+                const matchesEnabled = !this.filterEnabled || (this.filterEnabled === 'true' && host.enabled) || (this.filterEnabled === 'false' && !host.enabled);
+                const matchesAddress = !this.filterAddress || host.address_id == this.filterAddress;
+                return matchesSearch && matchesEnabled && matchesAddress;
+            });
+        },
+        
+        openAddModal() { this.formData = { hostname: '', ip_address: '', mac_address: '', os_type: '', location: '', enabled: true, address_id: null }; this.showAddModal = true; },
+        closeAddModal() { this.showAddModal = false; },
+        
+        submitHost() {
+            fetch('/api/reference/hosts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            .then(r => { if (r.ok) { this.closeAddModal(); this.loadHosts(); } else { alert('Ошибка'); } })
+            .catch(() => alert('Ошибка'));
+        },
+        
+        editHost(host) {
+            this.formData = { 
+                id: host.id,
+                hostname: host.hostname || '', 
+                ip_address: host.ip_address || '', 
+                mac_address: host.mac_address || '', 
+                os_type: host.os_type || '', 
+                location: host.location || '', 
+                enabled: host.enabled || true, 
+                address_id: host.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
+        }
+    }));
+
+    // Компонент для страницы сетевого оборудования
+    Alpine.data('networkEquipmentPage', () => ({
+        searchQuery: '',
+        filterCategory: '',
+        filterAddress: '',
+        showAddModal: false,
+        showEditModal: false,
+        formData: { name: '', model: '', serial_number: '', ip_address: '', location: '', type: 'switch', address_id: null },
+        equipment: [],
+        addresses: [],
+        
+        init() { this.loadEquipment(); this.loadAddresses(); },
+        
+        loadEquipment() {
+            fetch('/api/reference/network-equipment')
+                .then(r => r.json())
+                .then(data => { this.equipment = data || []; })
+                .catch(err => console.error('Ошибка загрузки оборудования:', err));
+        },
+
+        loadAddresses() {
+            fetch('/api/reference/addresses')
+                .then(r => r.json())
+                .then(data => { this.addresses = data || []; })
+                .catch(err => console.error('Ошибка загрузки адресов:', err));
+        },
+        
+        get filteredEquipment() {
+            return this.equipment.filter(eq => {
+                const s = this.searchQuery.toLowerCase();
+                const matchesSearch = eq.name.toLowerCase().includes(s) || (eq.model && eq.model.toLowerCase().includes(s)) || eq.ip_address.includes(this.searchQuery);
+                const matchesCategory = !this.filterCategory || eq.type === this.filterCategory;
+                const matchesAddress = !this.filterAddress || eq.address_id == this.filterAddress;
+                return matchesSearch && matchesCategory && matchesAddress;
+            });
+        },
+        
+        openAddModal() { this.formData = { name: '', model: '', serial_number: '', ip_address: '', location: '', type: 'switch', address_id: null }; this.showAddModal = true; },
+        closeAddModal() { this.showAddModal = false; },
+        
+        submitEquipment() {
+            fetch('/api/reference/network-equipment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            .then(r => { if (r.ok) { this.closeAddModal(); this.loadEquipment(); } else { alert('Ошибка'); } })
+            .catch(() => alert('Ошибка'));
+        },
+        
+        editEquipment(eq) {
+            this.formData = { 
+                id: eq.id,
+                name: eq.name || '', 
+                model: eq.model || '', 
+                serial_number: eq.serial_number || '', 
+                ip_address: eq.ip_address || '', 
+                location: eq.location || '', 
+                type: eq.type || 'switch', 
+                address_id: eq.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
+        }
+    }));
+
+    // Компонент для страницы сетевых МФУ
+    Alpine.data('networkMfpsPage', () => ({
+        searchQuery: '',
+        filterAddress: '',
+        showAddModal: false,
+        showEditModal: false,
+        formData: { name: '', model: '', serial_number: '', ip_address: '', location: '', address_id: null },
+        mfps: [],
+        addresses: [],
+        
+        init() { this.loadMfps(); this.loadAddresses(); },
+        
+        loadMfps() {
+            fetch('/api/reference/network-mfps')
+                .then(r => r.json())
+                .then(data => { this.mfps = data || []; })
+                .catch(err => console.error('Ошибка загрузки МФУ:', err));
+        },
+
+        loadAddresses() {
+            fetch('/api/reference/addresses')
+                .then(r => r.json())
+                .then(data => { this.addresses = data || []; })
+                .catch(err => console.error('Ошибка загрузки адресов:', err));
+        },
+        
+        get filteredMfps() {
+            return this.mfps.filter(mfp => {
+                const s = this.searchQuery.toLowerCase();
+                const matchesSearch = mfp.name.toLowerCase().includes(s) || (mfp.model && mfp.model.toLowerCase().includes(s)) || mfp.ip_address.includes(this.searchQuery);
+                const matchesAddress = !this.filterAddress || mfp.address_id == this.filterAddress;
+                return matchesSearch && matchesAddress;
+            });
+        },
+        
+        openAddModal() { this.formData = { name: '', model: '', serial_number: '', ip_address: '', location: '', address_id: null }; this.showAddModal = true; },
+        closeAddModal() { this.showAddModal = false; },
+        
+        submitMfp() {
+            fetch('/api/reference/network-mfps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            .then(r => { if (r.ok) { this.closeAddModal(); this.loadMfps(); } else { alert('Ошибка'); } })
+            .catch(() => alert('Ошибка'));
+        },
+        
+        editMfp(mfp) {
+            this.formData = { 
+                id: mfp.id,
+                name: mfp.name || '', 
+                model: mfp.model || '', 
+                serial_number: mfp.serial_number || '', 
+                ip_address: mfp.ip_address || '', 
+                location: mfp.location || '', 
+                address_id: mfp.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
+        }
+    }));
+
+    // Компонент для страницы IP телефонов
+    Alpine.data('ipPhonesPage', () => ({
+        searchQuery: '',
+        filterAddress: '',
+        showAddModal: false,
+        showEditModal: false,
+        formData: { name: '', model: '', serial_number: '', mac_address: '', extension: '', location: '', address_id: null },
+        phones: [],
+        addresses: [],
+        
+        init() { this.loadPhones(); this.loadAddresses(); },
+        
+        loadPhones() {
+            fetch('/api/reference/ip-phones')
+                .then(r => r.json())
+                .then(data => { this.phones = data || []; })
+                .catch(err => console.error('Ошибка загрузки телефонов:', err));
+        },
+
+        loadAddresses() {
+            fetch('/api/reference/addresses')
+                .then(r => r.json())
+                .then(data => { this.addresses = data || []; })
+                .catch(err => console.error('Ошибка загрузки адресов:', err));
+        },
+        
+        get filteredPhones() {
+            return this.phones.filter(phone => {
+                const s = this.searchQuery.toLowerCase();
+                const matchesSearch = phone.name.toLowerCase().includes(s) || (phone.model && phone.model.toLowerCase().includes(s)) || (phone.extension && phone.extension.includes(this.searchQuery));
+                const matchesAddress = !this.filterAddress || phone.address_id == this.filterAddress;
+                return matchesSearch && matchesAddress;
+            });
+        },
+        
+        openAddModal() { this.formData = { name: '', model: '', serial_number: '', mac_address: '', extension: '', location: '', address_id: null }; this.showAddModal = true; },
+        closeAddModal() { this.showAddModal = false; },
+        
+        submitPhone() {
+            fetch('/api/reference/ip-phones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            .then(r => { if (r.ok) { this.closeAddModal(); this.loadPhones(); } else { alert('Ошибка'); } })
+            .catch(() => alert('Ошибка'));
+        },
+        
+        editPhone(phone) {
+            this.formData = { 
+                id: phone.id,
+                name: phone.name || '', 
+                model: phone.model || '', 
+                serial_number: phone.serial_number || '', 
+                mac_address: phone.mac_address || '', 
+                extension: phone.extension || '', 
+                location: phone.location || '', 
+                address_id: phone.address_id 
+            };
+            this.showEditModal = true;
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
+        }
+    }));
+
+    // Компонент для формы входа
+    Alpine.data('loginForm', () => ({
+        username: '',
+        password: '',
+        error: '',
+
+        submit() {
+            fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: this.username, password: this.password })
+            })
+            .then(response => {
+                if (response.ok) { window.location.href = '/'; }
+                else { return response.text().then(t => { throw new Error(t || 'Ошибка входа'); }); }
+            })
+            .catch(err => { this.error = err.message; });
+        }
+    }));
+});

@@ -1,0 +1,308 @@
+<!-- Шаблон: АРМ (Рабочие места) -->
+<div class="reference-page" x-data="workstationsPage()">
+    <div class="page-header">
+        <h2>Справочник АРМ</h2>
+        <button @click="showAddModal = true" class="btn btn-primary">
+            <span>+ Добавить АРМ</span>
+        </button>
+    </div>
+
+    <!-- Фильтры и поиск -->
+    <div class="filters-bar">
+        <input type="text" x-model="searchQuery" placeholder="Поиск по инвентарному номеру..." class="input-search">
+        <select x-model="filterVacant" class="input-select">
+            <option value="">Все</option>
+            <option value="true">Вакантные</option>
+            <option value="false">Занятые</option>
+        </select>
+        <select x-model="filterAddress" class="input-select">
+            <option value="">Все адреса</option>
+            <template x-for="addr in addresses" :key="addr.id">
+                <option :value="addr.id" x-text="addr.fullAddress"></option>
+            </template>
+        </select>
+    </div>
+
+    <!-- Таблица данных -->
+    <div class="data-table-container">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Инвентарный номер</th>
+                    <th>Серийный номер</th>
+                    <th>Адрес</th>
+                    <th>Сотрудник</th>
+                    <th>Мониторы</th>
+                    <th>Статус</th>
+                    <th>Замена</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="ws in filteredWorkstations" :key="ws.id">
+                    <tr>
+                        <td x-text="ws.id"></td>
+                        <td x-text="ws.inventory_number"></td>
+                        <td x-text="ws.serial_number || '-'"></td>
+                        <td x-text="ws.address"></td>
+                        <td x-text="ws.employee || 'Вакантно'"></td>
+                        <td x-text="ws.monitor_count"></td>
+                        <td>
+                            <span class="badge" 
+                                  :class="ws.is_vacant ? 'badge-success' : 'badge-info'"
+                                  x-text="ws.is_vacant ? 'Вакантно' : 'Занято'"></span>
+                        </td>
+                        <td>
+                            <span x-show="ws.replacement_done" class="badge badge-warning">Выполнена</span>
+                            <span x-show="!ws.replacement_done">-</span>
+                        </td>
+                        <td class="actions-cell">
+                            <button @click="editWorkstation(ws)" class="btn-icon" title="Редактировать">✏️</button>
+                            <button @click="deleteWorkstation(ws.id)" class="btn-icon btn-danger" title="Удалить">🗑️</button>
+                        </td>
+                    </tr>
+                </template>
+                <tr x-show="filteredWorkstations.length === 0">
+                    <td colspan="9" class="empty-state">Нет данных для отображения</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Модальное окно добавления/редактирования -->
+    <div x-show="showAddModal || showEditModal" 
+         class="modal-overlay"
+         style="display: none;"
+         @click.self="closeModal()">
+        <div class="modal-content">
+            <h3 x-text="showEditModal ? 'Редактирование АРМ' : 'Новый АРМ'"></h3>
+            
+            <form @submit.prevent="saveWorkstation()">
+                <div class="form-group">
+                    <label>Адрес *</label>
+                    <select x-model="formData.address_id" required class="input-select">
+                        <option value="">Выберите адрес</option>
+                        <template x-for="addr in addresses" :key="addr.id">
+                            <option :value="addr.id" x-text="addr.fullAddress"></option>
+                        </template>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Инвентарный номер *</label>
+                    <input type="text" x-model="formData.inventory_number" required class="input-field">
+                </div>
+                
+                <div class="form-group">
+                    <label>Серийный номер</label>
+                    <input type="text" x-model="formData.serial_number" class="input-field">
+                </div>
+                
+                <div class="form-group">
+                    <label>Номера печатей</label>
+                    <input type="text" x-model="formData.seal_numbers" class="input-field">
+                </div>
+                
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group">
+                        <label>Количество мониторов (1-5) *</label>
+                        <input type="number" x-model="formData.monitor_count" min="1" max="5" required class="input-field">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Сотрудник</label>
+                        <select x-model="formData.employee_id" class="input-select">
+                            <option value="">Не назначен</option>
+                            <template x-for="emp in employees" :key="emp.id">
+                                <option :value="emp.id" x-text="emp.full_name"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" x-model="formData.is_vacant" style="margin-right: 8px;">
+                        Вакантное место
+                    </label>
+                </div>
+                
+                <div class="form-group">
+                    <label>
+                        <input type="checkbox" x-model="formData.replacement_done" @change="onReplacementChange()" style="margin-right: 8px;">
+                        Замена выполнена
+                    </label>
+                </div>
+                
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;" x-show="formData.replacement_done">
+                    <div class="form-group">
+                        <label>Дата замены</label>
+                        <input type="date" x-model="formData.replacement_date" class="input-field">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Буква замены</label>
+                        <input type="text" x-model="formData.replacement_letter" class="input-field">
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" @click="closeModal()" class="btn btn-secondary">Отмена</button>
+                    <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function workstationsPage() {
+    return {
+        searchQuery: '',
+        filterVacant: '',
+        filterAddress: '',
+        showAddModal: false,
+        showEditModal: false,
+        workstations: [],
+        addresses: [],
+        employees: [],
+        formData: {
+            id: null,
+            address_id: '',
+            inventory_number: '',
+            serial_number: '',
+            seal_numbers: '',
+            monitor_count: 1,
+            employee_id: '',
+            is_vacant: false,
+            replacement_done: false,
+            replacement_date: '',
+            replacement_letter: ''
+        },
+        
+        init() {
+            this.loadAddresses();
+            this.loadEmployees();
+            this.loadWorkstations();
+        },
+        
+        get filteredWorkstations() {
+            return this.workstations.filter(ws => {
+                const matchesSearch = ws.inventory_number.toLowerCase().includes(this.searchQuery.toLowerCase()) ||
+                                     (ws.serial_number && ws.serial_number.toLowerCase().includes(this.searchQuery.toLowerCase()));
+                const matchesVacant = this.filterVacant === '' || String(ws.is_vacant) === this.filterVacant;
+                const matchesAddress = !this.filterAddress || ws.address_id == this.filterAddress;
+                return matchesSearch && matchesVacant && matchesAddress;
+            });
+        },
+        
+        loadAddresses() {
+            fetch('/api/references/addresses')
+                .then(res => res.json())
+                .then(data => {
+                    this.addresses = data.map(addr => ({
+                        id: addr.id,
+                        fullAddress: this.formatFullAddress(addr)
+                    }));
+                })
+                .catch(err => console.error('Ошибка загрузки адресов:', err));
+        },
+        
+        loadEmployees() {
+            fetch('/api/references/employees')
+                .then(res => res.json())
+                .then(data => {
+                    this.employees = data;
+                })
+                .catch(err => console.error('Ошибка загрузки сотрудников:', err));
+        },
+        
+        loadWorkstations() {
+            fetch('/api/references/workstations')
+                .then(res => res.json())
+                .then(data => {
+                    this.workstations = data;
+                })
+                .catch(err => console.error('Ошибка загрузки АРМ:', err));
+        },
+        
+        formatFullAddress(addr) {
+            let parts = [];
+            if (addr.street) parts.push(addr.street);
+            if (addr.building) parts.push(addr.building);
+            if (addr.cabinet) parts.push(`каб.${addr.cabinet}`);
+            else if (addr.corridor) parts.push(`кор.${addr.corridor}${addr.floor ? ' эт.' + addr.floor : ''}`);
+            else if (addr.service_room) parts.push(addr.service_room);
+            return parts.join(', ');
+        },
+        
+        onReplacementChange() {
+            if (!this.formData.replacement_done) {
+                this.formData.replacement_date = '';
+                this.formData.replacement_letter = '';
+            }
+        },
+        
+        editWorkstation(ws) {
+            this.formData = {
+                id: ws.id,
+                address_id: ws.address_id,
+                inventory_number: ws.inventory_number,
+                serial_number: ws.serial_number || '',
+                seal_numbers: ws.seal_numbers || '',
+                monitor_count: ws.monitor_count,
+                employee_id: ws.employee_id || '',
+                is_vacant: ws.is_vacant,
+                replacement_done: ws.replacement_done,
+                replacement_date: ws.replacement_date || '',
+                replacement_letter: ws.replacement_letter || ''
+            };
+            this.showEditModal = true;
+        },
+        
+        saveWorkstation() {
+            const url = this.showEditModal ? '/api/references/workstations/' + this.formData.id : '/api/references/workstations';
+            const method = this.showEditModal ? 'PUT' : 'POST';
+            
+            fetch(url, {
+                method: method,
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(this.formData)
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    this.loadWorkstations();
+                    this.closeModal();
+                } else {
+                    alert('Ошибка: ' + data.error);
+                }
+            })
+            .catch(err => alert('Ошибка сохранения: ' + err));
+        },
+        
+        deleteWorkstation(id) {
+            if (confirm('Вы уверены, что хотите удалить этот АРМ?')) {
+                fetch('/api/references/workstations/' + id, {method: 'DELETE'})
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) this.loadWorkstations();
+                        else alert('Ошибка: ' + data.error);
+                    })
+                    .catch(err => alert('Ошибка удаления: ' + err));
+            }
+        },
+        
+        closeModal() {
+            this.showAddModal = false;
+            this.showEditModal = false;
+            this.formData = {
+                id: null, address_id: '', inventory_number: '', serial_number: '', seal_numbers: '',
+                monitor_count: 1, employee_id: '', is_vacant: false, replacement_done: false,
+                replacement_date: '', replacement_letter: ''
+            };
+        }
+    }
+}
+</script>
