@@ -136,7 +136,7 @@ document.addEventListener('alpine:init', () => {
         closeAddModal() { this.showAddModal = false; },
         
         submitEmployee() {
-            fetch('/api/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            fetch('/api/reference/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadEmployees(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
         }
@@ -184,7 +184,7 @@ document.addEventListener('alpine:init', () => {
         closeAddModal() { this.showAddModal = false; },
         
         submitWorkstation() {
-            fetch('/api/workstations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            fetch('/api/reference/workstations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadWorkstations(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
         }
@@ -220,10 +220,15 @@ document.addEventListener('alpine:init', () => {
         openAddModal() { this.formData = { address: '', description: '', type: 'cabinet' }; this.showAddModal = true; },
         closeAddModal() { this.showAddModal = false; },
         
-        submitAddress() {
-            fetch('/api/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+        saveAddress() {
+            fetch('/api/reference/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadAddresses(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
+        },
+        
+        onAddressTypeChange() {
+            // Обработка изменения типа адреса (для будущей логики)
+            console.log('Тип адреса изменён на:', this.formData.type);
         }
     }));
 
@@ -269,7 +274,7 @@ document.addEventListener('alpine:init', () => {
         closeAddModal() { this.showAddModal = false; },
         
         submitHost() {
-            fetch('/api/hosts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            fetch('/api/reference/hosts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadHosts(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
         }
@@ -316,7 +321,7 @@ document.addEventListener('alpine:init', () => {
         closeAddModal() { this.showAddModal = false; },
         
         submitEquipment() {
-            fetch('/api/network-equipment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            fetch('/api/reference/network-equipment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadEquipment(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
         }
@@ -361,7 +366,7 @@ document.addEventListener('alpine:init', () => {
         closeAddModal() { this.showAddModal = false; },
         
         submitMfp() {
-            fetch('/api/network-mfps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            fetch('/api/reference/network-mfps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadMfps(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
         }
@@ -406,7 +411,7 @@ document.addEventListener('alpine:init', () => {
         closeAddModal() { this.showAddModal = false; },
         
         submitPhone() {
-            fetch('/api/ip-phones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
+            fetch('/api/reference/ip-phones', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
             .then(r => { if (r.ok) { this.closeAddModal(); this.loadPhones(); } else { alert('Ошибка'); } })
             .catch(() => alert('Ошибка'));
         }
