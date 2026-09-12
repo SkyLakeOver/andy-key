@@ -480,14 +480,14 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 		escapedCabinet := strings.ReplaceAll(req.Cabinet, "'", "''")
 		escapedCorridor := strings.ReplaceAll(req.Corridor, "'", "''")
 		escapedServiceRoom := strings.ReplaceAll(req.ServiceRoom, "'", "''")
-		escapedGarage := strings.ReplaceAll(req.Garage, "'", "''")
+		escapedGarage := strings.ReplaceAll(req.GarageNumber, "'", "''")
 		floorStr := "NULL"
 		if req.Floor != "" {
 			floorStr = fmt.Sprintf("'%s'", strings.ReplaceAll(req.Floor, "'", "''"))
 		}
 
 		query := fmt.Sprintf(`
-			INSERT INTO reference_addresses (street, building, cabinet, corridor, floor, service_room, garage)
+			INSERT INTO reference_addresses (street, building, cabinet, corridor, floor, service_room, garage_number)
 			VALUES ('%s', '%s', '%s', '%s', %s, '%s', '%s')
 		`, escapedStreet, escapedBuilding, escapedCabinet, escapedCorridor, floorStr, escapedServiceRoom, escapedGarage)
 
@@ -502,7 +502,7 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		logPanel("Добавлен адрес: " + FormatFullAddress(req.Street, req.Building, req.Cabinet, req.Corridor, req.ServiceRoom, req.Garage, req.Floor))
+		logPanel("Добавлен адрес: " + FormatFullAddress(req.Street, req.Building, req.Cabinet, req.Corridor, req.ServiceRoom, req.GarageNumber, req.Floor))
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
 
 	case "PUT":

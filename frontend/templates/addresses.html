@@ -90,7 +90,6 @@
                         <option value="cabinet">Кабинет</option>
                         <option value="corridor">Коридор</option>
                         <option value="service">Служебное помещение</option>
-                        <option value="garage">Гараж</option>
                     </select>
                 </div>
                 
@@ -113,11 +112,12 @@
                         <option value="server">Серверная</option>
                         <option value="storage">Склад</option>
                         <option value="office">Офис</option>
+                        <option value="garage">Гараж</option>
                         <option value="other">Другое</option>
                     </select>
                 </div>
                 
-                <div class="form-group" x-show="formData.addressType === 'garage'">
+                <div class="form-group" x-show="formData.serviceRoom === 'garage'">
                     <label>Номер гаража</label>
                     <input type="text" x-model="formData.garage" class="input-field" placeholder="Например: Г-12">
                 </div>
@@ -198,16 +198,26 @@ function addressesPage() {
         },
         
         editAddress(address) {
+            // Определяем тип и подтип из сохраненных данных
+            let addrType = address.type || 'service';
+            let serviceVal = address.value || '';
+            
+            // Если в БД записан гараж как service_room='garage', то ставим тип service и serviceRoom='garage'
+            if (serviceVal === 'garage' || address.service_room === 'garage') {
+                addrType = 'service';
+                serviceVal = 'garage';
+            }
+            
             this.formData = {
                 id: address.id,
                 street: address.street,
                 building: address.building,
-                addressType: address.type,
-                cabinet: address.type === 'cabinet' ? address.value : '',
-                corridor: address.type === 'corridor' ? address.value : '',
+                addressType: addrType,
+                cabinet: addrType === 'cabinet' ? serviceVal : '',
+                corridor: addrType === 'corridor' ? serviceVal : '',
                 floor: address.floor,
-                serviceRoom: address.type === 'service' ? address.value : '',
-                garage: address.type === 'garage' ? address.value : ''
+                serviceRoom: addrType === 'service' ? serviceVal : '',
+                garage: serviceVal === 'garage' ? (address.garage_number || serviceVal) : ''
             };
             this.showEditModal = true;
         },
@@ -223,7 +233,7 @@ function addressesPage() {
                 cabinet: this.formData.addressType === 'cabinet' ? this.formData.cabinet : '',
                 corridor: this.formData.addressType === 'corridor' ? this.formData.corridor : '',
                 service_room: this.formData.addressType === 'service' ? this.formData.serviceRoom : '',
-                garage: this.formData.addressType === 'garage' ? this.formData.garage : '',
+                garage_number: this.formData.serviceRoom === 'garage' ? this.formData.garage : '',
                 floor: this.formData.floor || ''
             };
             

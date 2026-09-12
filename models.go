@@ -13,7 +13,7 @@ type AddressRequest struct {
 	Corridor     string `json:"corridor"`
 	Floor        string `json:"floor"`
 	ServiceRoom  string `json:"service_room"`
-	Garage       string `json:"garage"`
+	GarageNumber string `json:"garage_number"`
 }
 
 // Validate проверяет корректность данных адреса
@@ -22,7 +22,7 @@ func (a AddressRequest) Validate() error {
 	hasCabinet := a.Cabinet != ""
 	hasCorridor := a.Corridor != ""
 	hasServiceRoom := a.ServiceRoom != ""
-	hasGarage := a.Garage != ""
+	hasGarage := a.GarageNumber != ""
 
 	count := 0
 	if hasCabinet {
@@ -57,6 +57,11 @@ func (a AddressRequest) Validate() error {
 		if floor < 1 || floor > 5 {
 			return fmt.Errorf("этаж должен быть в диапазоне от 1 до 5")
 		}
+	}
+	
+	// Гараж может быть указан только как подтип служебного помещения
+	if hasGarage && !hasServiceRoom {
+		return fmt.Errorf("гараж может быть указан только как подтип служебного помещения")
 	}
 
 	// Валидация пройдена
@@ -286,7 +291,7 @@ func (t TaskControlRequest) Validate() error {
 }
 
 // Форматирование полного адреса
-func FormatFullAddress(street, building, cabinet, corridor, serviceRoom, garage, floor string) string {
+func FormatFullAddress(street, building, cabinet, corridor, serviceRoom, garageNumber, floor string) string {
 	parts := []string{}
 	if street != "" {
 		parts = append(parts, street)
@@ -307,9 +312,11 @@ func FormatFullAddress(street, building, cabinet, corridor, serviceRoom, garage,
 		}
 		parts = append(parts, "кор."+corridor+floorStr)
 	} else if serviceRoom != "" {
-		parts = append(parts, serviceRoom)
-	} else if garage != "" {
-		parts = append(parts, "гараж "+garage)
+		if serviceRoom == "garage" && garageNumber != "" {
+			parts = append(parts, "гараж "+garageNumber)
+		} else {
+			parts = append(parts, serviceRoom)
+		}
 	}
 	return strings.Join(parts, ", ")
 }
