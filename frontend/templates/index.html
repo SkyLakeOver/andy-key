@@ -6,13 +6,19 @@
     <title>andy-key</title>
     
     <!-- HTMX для динамической загрузки контента (локальная версия) -->
-<script src="/static/js/htmx.min.js"></script>
-<!-- Vue.js для островов интерактивности (локальная версия, production) -->
-<script src="/static/js/vue.global.prod.js"></script>
-<!-- Основное приложение Alpine.js (должно быть загружено ДО Alpine.js) -->
-<script src="/static/js/app.js"></script>
-<!-- Alpine.js для реактивности на клиенте (локальная версия) -->
-<script defer src="/static/js/alpine.min.js"></script>
+    <script src="/static/js/htmx.min.js"></script>
+    
+    <!-- Vue.js для островов интерактивности (локальная версия, production) -->
+    <script src="/static/js/vue.global.prod.js"></script>
+    
+    <!-- Vue-острова для сложных форм -->
+    <script src="/static/js/islands.js"></script>
+    
+    <!-- Основное приложение Alpine.js (должно быть загружено ДО Alpine.js) -->
+    <script src="/static/js/app.js"></script>
+    
+    <!-- Alpine.js для реактивности на клиенте (локальная версия) -->
+    <script defer src="/static/js/alpine.min.js"></script>
     
     <!-- Стили -->
     <link rel="stylesheet" href="/static/css/main.css">

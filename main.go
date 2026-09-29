@@ -241,13 +241,11 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 		typeFilter := r.URL.Query().Get("type_filter")
 
 		query := `SELECT id, street, building, cabinet, corridor, floor, 
-                     service_room, type, service_room_type, garage_number, 
-                     created_at 
+                     service_room, type, service_room_type, garage_number, created_at 
               FROM reference_addresses`
 
 		var conditions []string
 		var args []interface{}
-		argIdx := 1
 
 		if search != "" {
 			conditions = append(conditions, "(street LIKE ? OR building LIKE ? OR cabinet LIKE ? OR corridor LIKE ? OR service_room LIKE ?)")
@@ -2507,7 +2505,7 @@ func apiAddressEditFormHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Рендерим HTML-компонент с data-атрибутами для Vue
-	templates.ExecuteTemplate(w, "components/address_edit_form", rows[0])
+	templates.ExecuteTemplate(w, "components/address_edit_form.html", rows[0])
 }
 func setupRoutes() {
 	// Инициализация шаблонов
@@ -2521,6 +2519,8 @@ func setupRoutes() {
 	http.HandleFunc("/", recoverMiddleware(indexHandler))
 	http.HandleFunc("/login", recoverMiddleware(loginHandler))
 	http.HandleFunc("/logout", recoverMiddleware(logoutHandler))
+
+	http.HandleFunc("/api/reference/addresses/edit-form/", recoverMiddleware(authMiddleware(apiAddressEditFormHandler)))
 
 	// Справочники
 	http.HandleFunc("/api/reference/addresses", recoverMiddleware(authMiddleware(apiReferenceAddressesHandler)))
