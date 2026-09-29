@@ -12,7 +12,7 @@ import (
 //go:embed templates/*.html templates/components/*.html
 var TemplatesFS embed.FS
 
-//go:embed static/css/main.css static/js/alpine.min.js static/js/htmx.min.js static/js/app.js
+//go:embed static/css/*.css static/js/*.js
 var StaticFS embed.FS
 
 // StaticFileServer возвращает http.Handler для раздачи статических файлов с правильными MIME-типами

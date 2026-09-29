@@ -54,4 +54,10 @@ htmlcov/
 .mypy_cache/
 .pytest_cache/
 .gradle/
+
+# === Критичные артефакты andy-key ===
+andy-key          # Linux-бинарник без расширения
+*.db              # Базы данных (data.db, andy-key.db)
+*.key             # Ключи шифрования (.andy-key.key)
+logs/             # Папка с логами
 ```
