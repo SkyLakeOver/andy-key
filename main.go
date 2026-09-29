@@ -1,7 +1,7 @@
 package main
 
 import (
-	
+	"andy-key/frontend"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -13,7 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"andy-key/frontend"
 )
 
 const DEFAULT_PORT = 9000 // AK-v.2.1.1: Fixed static routing and MIME types
@@ -123,25 +122,25 @@ func initTemplates() error {
 		},
 	}
 	templates = template.New("").Funcs(funcMap)
-	
+
 	// Проходим по всем HTML файлам в embedded FS (основные шаблоны)
 	pattern := "templates/*.html"
 	matches, err := fs.Glob(frontend.TemplatesFS, pattern)
 	if err != nil {
 		return fmt.Errorf("ошибка поиска шаблонов: %w", err)
 	}
-	
+
 	if len(matches) == 0 {
 		return fmt.Errorf("шаблоны не найдены")
 	}
-	
+
 	// Парсим каждый основной шаблон
 	for _, match := range matches {
 		content, err := frontend.TemplatesFS.ReadFile(match)
 		if err != nil {
 			return fmt.Errorf("ошибка чтения шаблона %s: %w", match, err)
 		}
-		
+
 		name := strings.TrimSuffix(strings.TrimPrefix(match, "templates/"), ".html")
 		tmpl, err := templates.New(name).Parse(string(content))
 		if err != nil {
@@ -149,26 +148,26 @@ func initTemplates() error {
 		}
 		templates = tmpl
 	}
-	
+
 	// Дополнительно загружаем компоненты из подпапки components
 	componentPattern := "templates/components/*.html"
 	componentMatches, err := fs.Glob(frontend.TemplatesFS, componentPattern)
 	if err != nil {
 		return fmt.Errorf("ошибка поиска компонентов: %w", err)
 	}
-	
+
 	for _, match := range componentMatches {
 		content, err := frontend.TemplatesFS.ReadFile(match)
 		if err != nil {
 			return fmt.Errorf("ошибка чтения компонента %s: %w", match, err)
 		}
-		
+
 		_, err = templates.Parse(string(content))
 		if err != nil {
 			return fmt.Errorf("ошибка парсинга компонента %s: %w", match, err)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -180,13 +179,13 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/login", http.StatusSeeOther)
 		return
 	}
-	
+
 	// Рендерим главный шаблон index
 	data := map[string]string{
 		"FooterText": footerText,
 		"AppVersion": CURRENT_SCHEMA_VERSION,
 	}
-	
+
 	if err := templates.ExecuteTemplate(w, "index", data); err != nil {
 		http.Error(w, "Ошибка рендеринга шаблона: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -235,14 +234,44 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 	// Загружаем данные из БД в зависимости от раздела
 	data := make(map[string]interface{})
 	var dbError error
-	
+
 	switch section {
 	case "addresses":
-		rows, err := QueryDB(`SELECT id, street, building, cabinet, corridor, floor, service_room, created_at FROM reference_addresses ORDER BY street, building`)
+		search := r.URL.Query().Get("search")
+		typeFilter := r.URL.Query().Get("type_filter")
+
+		query := `SELECT id, street, building, cabinet, corridor, floor, 
+                     service_room, type, service_room_type, garage_number, 
+                     created_at 
+              FROM reference_addresses`
+
+		var conditions []string
+		var args []interface{}
+		argIdx := 1
+
+		if search != "" {
+			conditions = append(conditions, "(street LIKE ? OR building LIKE ? OR cabinet LIKE ? OR corridor LIKE ? OR service_room LIKE ?)")
+			for i := 0; i < 5; i++ {
+				args = append(args, "%"+search+"%")
+			}
+		}
+
+		if typeFilter != "" {
+			conditions = append(conditions, "type = ?")
+			args = append(args, typeFilter)
+		}
+
+		if len(conditions) > 0 {
+			query += " WHERE " + strings.Join(conditions, " AND ")
+		}
+		query += " ORDER BY street, building"
+
+		rows, err := QueryDB(query, args...)
 		if err != nil {
 			dbError = err
 		} else {
-			data["addresses"] = rows
+			data["Addresses"] = rows
+			data["Search"] = search
 		}
 	case "employees":
 		rows, err := QueryDB(`SELECT id, full_name, short_name, phone_city, phone_internal, address_id, created_at FROM reference_employees ORDER BY full_name`)
@@ -309,12 +338,12 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 	if isHtmx {
 		// Для HTMX рендерим только фрагмент контента (без layout)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		
+
 		// Добавляем информацию об ошибке БД в данные
 		if dbError != nil {
 			data["dbError"] = dbError.Error()
 		}
-		
+
 		// Пробуем рендерить шаблон, если его нет - выводим заглушку
 		err := templates.ExecuteTemplate(w, templateName, data)
 		if err != nil {
@@ -542,7 +571,7 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных: " + err.Error()})
 			return
 		}
-		
+
 		// Форматируем полные адреса для отображения
 		for i := range rows {
 			street := rows[i]["street"]
@@ -551,10 +580,10 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
 			floorStr := rows[i]["floor"]
-			
+
 			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, "", floorStr)
 		}
-		
+
 		json.NewEncoder(w).Encode(rows)
 
 	case "POST":
@@ -575,10 +604,10 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 		// Логика для гаража и служебных помещений
 		finalCabinet := req.Cabinet
 		finalServiceRoom := req.ServiceRoom
-		
+
 		if req.ServiceRoom == "garage" {
 			// Если это гараж, Cabinet - это номер/описание гаража, ServiceRoom - "garage"
-			finalCabinet = req.Cabinet 
+			finalCabinet = req.Cabinet
 			finalServiceRoom = "garage"
 		}
 
@@ -642,12 +671,12 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 		// Логика для гаража (аналогично INSERT)
 		finalCabinet := req.Cabinet
 		finalServiceRoom := req.ServiceRoom
-		
+
 		if req.ServiceRoom == "garage" {
 			finalCabinet = req.Cabinet
 			finalServiceRoom = "garage"
 		}
-		
+
 		// Используем параметризованный запрос вместо конкатенации
 		if req.Floor != "" {
 			floorInt, err := strconv.Atoi(req.Floor)
@@ -698,7 +727,7 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil && err.Error() != "sql: no rows in result set" {
 			log.Printf("Ошибка проверки использования адреса в hosts: %v", err)
 		}
-		
+
 		if usedInEmployees > 0 || usedInWorkstations > 0 || usedInHosts > 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Нельзя удалить адрес, так как он используется в других справочниках"})
@@ -745,7 +774,7 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных: " + err.Error()})
 			return
 		}
-		
+
 		// Форматируем полные адреса для отображения
 		for i := range rows {
 			street := rows[i]["street"]
@@ -754,10 +783,10 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
 			floorStr := rows[i]["floor"]
-			
+
 			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, "", floorStr)
 		}
-		
+
 		json.NewEncoder(w).Encode(rows)
 
 	case "POST":
@@ -793,7 +822,7 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Указанный адрес не найден"})
 			return
 		}
-		
+
 		if addressCheck[0]["service_room"] != "" {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Сотрудники в служебных помещениях не учитываются"})
@@ -856,7 +885,7 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Указанный адрес не найден"})
 			return
 		}
-		
+
 		if addressCheck[0]["service_room"] != "" {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Сотрудники в служебных помещениях не учитываются"})
@@ -900,7 +929,7 @@ func apiReferenceEmployeesHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка проверки использования сотрудника"})
 			return
 		}
-		
+
 		if len(usedInWorkstations) > 0 || len(usedInHosts) > 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Нельзя удалить сотрудника, так как он привязан к АРМ или хостам"})
@@ -951,7 +980,7 @@ func apiReferenceWorkstationsHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных: " + err.Error()})
 			return
 		}
-		
+
 		// Форматируем полные адреса для отображения
 		for i := range rows {
 			street := rows[i]["street"]
@@ -960,10 +989,10 @@ func apiReferenceWorkstationsHandler(w http.ResponseWriter, r *http.Request) {
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
 			floorStr := rows[i]["floor"]
-			
+
 			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, "", floorStr)
 		}
-		
+
 		json.NewEncoder(w).Encode(rows)
 
 	case "POST":
@@ -1119,7 +1148,7 @@ func apiReferenceHostsHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных: " + err.Error()})
 			return
 		}
-		
+
 		// Форматируем полные адреса для отображения
 		for i := range rows {
 			street := rows[i]["street"]
@@ -1128,10 +1157,10 @@ func apiReferenceHostsHandler(w http.ResponseWriter, r *http.Request) {
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
 			floorStr := rows[i]["floor"]
-			
+
 			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, "", floorStr)
 		}
-		
+
 		json.NewEncoder(w).Encode(rows)
 
 	case "POST":
@@ -1291,7 +1320,7 @@ func apiReferenceNetworkEquipmentHandler(w http.ResponseWriter, r *http.Request)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных: " + err.Error()})
 			return
 		}
-		
+
 		// Форматируем полные адреса для отображения
 		for i := range rows {
 			street := rows[i]["street"]
@@ -1300,10 +1329,10 @@ func apiReferenceNetworkEquipmentHandler(w http.ResponseWriter, r *http.Request)
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
 			floorStr := rows[i]["floor"]
-			
+
 			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, "", floorStr)
 		}
-		
+
 		json.NewEncoder(w).Encode(rows)
 
 	case "POST":
@@ -1459,7 +1488,7 @@ func apiReferenceNetworkMFPsHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных: " + err.Error()})
 			return
 		}
-		
+
 		// Форматируем полные адреса для отображения
 		for i := range rows {
 			street := rows[i]["street"]
@@ -1468,10 +1497,10 @@ func apiReferenceNetworkMFPsHandler(w http.ResponseWriter, r *http.Request) {
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
 			floorStr := rows[i]["floor"]
-			
+
 			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, "", floorStr)
 		}
-		
+
 		json.NewEncoder(w).Encode(rows)
 
 	case "POST":
@@ -1623,7 +1652,7 @@ func apiReferenceIPPhonesHandler(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных: " + err.Error()})
 			return
 		}
-		
+
 		// Форматируем полные адреса для отображения
 		for i := range rows {
 			street := rows[i]["street"]
@@ -1632,10 +1661,10 @@ func apiReferenceIPPhonesHandler(w http.ResponseWriter, r *http.Request) {
 			corridor := rows[i]["corridor"]
 			serviceRoom := rows[i]["service_room"]
 			floorStr := rows[i]["floor"]
-			
+
 			rows[i]["full_address"] = FormatFullAddress(street, building, cabinet, corridor, serviceRoom, "", floorStr)
 		}
-		
+
 		json.NewEncoder(w).Encode(rows)
 
 	case "POST":
@@ -2059,12 +2088,12 @@ func apiTasksHandler(w http.ResponseWriter, r *http.Request) {
 
 	case "POST":
 		var req struct {
-			Name          string                   `json:"name"`
-			Description   string                   `json:"description"`
-			CredentialID  int                      `json:"credential_id"`
-			HostIDs       []int                    `json:"host_ids"`
-			BashCommands  []string                 `json:"bash_commands"`
-			Scripts       []map[string]interface{} `json:"scripts"`
+			Name         string                   `json:"name"`
+			Description  string                   `json:"description"`
+			CredentialID int                      `json:"credential_id"`
+			HostIDs      []int                    `json:"host_ids"`
+			BashCommands []string                 `json:"bash_commands"`
+			Scripts      []map[string]interface{} `json:"scripts"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -2151,12 +2180,12 @@ func apiTasksHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			scriptID := int(scriptIDFloat)
-			
+
 			params, ok := script["parameters"].(string)
 			if !ok {
 				params = "{}"
 			}
-			
+
 			if err := execSafe(
 				"INSERT INTO task_scripts (task_id, script_id, parameters, order_index) VALUES (?, ?, ?, ?)",
 				taskID, scriptID, params, idx,
@@ -2267,14 +2296,14 @@ func apiTaskControlHandler(w http.ResponseWriter, r *http.Request) {
 	case "start":
 		taskMutex.Lock()
 		defer taskMutex.Unlock()
-		
+
 		// Проверяем, не запущена ли уже задача
 		if _, exists := runningTasks[taskID]; exists {
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Задача уже запущена"})
 			return
 		}
-		
+
 		// Здесь должна быть логика запуска задачи (в реальном приложении)
 		// Для упрощения просто обновляем статус
 		if err := execSafe("UPDATE tasks SET status = 'running', updated_at = CURRENT_TIMESTAMP WHERE id = ?", taskID); err != nil {
@@ -2288,13 +2317,13 @@ func apiTaskControlHandler(w http.ResponseWriter, r *http.Request) {
 	case "stop":
 		taskMutex.Lock()
 		defer taskMutex.Unlock()
-		
+
 		// Останавливаем задачу, если она запущена
 		if stopChan, exists := runningTasks[taskID]; exists {
 			close(stopChan)
 			delete(runningTasks, taskID)
 		}
-		
+
 		if err := execSafe("UPDATE tasks SET status = 'canceled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", taskID); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка обновления статуса задачи"})
@@ -2385,7 +2414,7 @@ func apiExecuteCommandHandler(w http.ResponseWriter, r *http.Request) {
 	if len(rows) == 0 {
 		hostCheck, _ := querySingleInt("SELECT id FROM reference_hosts WHERE id = ?", req.HostID)
 		credCheck, _ := querySingleInt("SELECT id FROM credentials WHERE id = ?", req.CredentialID)
-		
+
 		var errorMsg string
 		if hostCheck == 0 {
 			errorMsg = "Хост с ID " + strconv.Itoa(req.HostID) + " не найден или отключён"
@@ -2397,7 +2426,7 @@ func apiExecuteCommandHandler(w http.ResponseWriter, r *http.Request) {
 			errorMsg = "Хост и учётная запись найдены, но не могут быть связаны"
 			logDiagnostic("BASH-конструктор: Хост и учётная запись найдены, но связь не установлена")
 		}
-		
+
 		w.WriteHeader(http.StatusBadRequest)
 		json.NewEncoder(w).Encode(map[string]string{"error": errorMsg})
 		return
@@ -2428,12 +2457,12 @@ func apiExecuteCommandHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	port, _ := strconv.Atoi(portStr)
-	
+
 	logRemote("BASH-конструктор: Выполнение команды на хосте '" + fullName + "' (" + ip + "): " + req.Command)
 	logDiagnostic("BASH-конструктор: Начало выполнения SSH команды")
-	
+
 	output, err := ExecuteSSHCommand(username, decryptedPassword, ip, port, req.Command)
-	
+
 	if err != nil {
 		logDiagnostic("BASH-конструктор: Ошибка выполнения SSH команды: " + err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
@@ -2456,49 +2485,73 @@ func apiExecuteCommandHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==================== НАСТРОЙКА МАРШРУТОВ ====================
+// ==================== МОДАЛКА РЕДАКТИРОВАНИЯ АДРЕСА (HTML для Vue-острова) ====================
+func apiAddressEditFormHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-func setupRoutes() {
-// Инициализация шаблонов
-if err := initTemplates(); err != nil {
-log.Fatalf("Ошибка инициализации шаблонов: %v", err)
+	// Извлекаем ID из URL
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/reference/addresses/edit-form/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Некорректный ID", http.StatusBadRequest)
+		return
+	}
+
+	rows, err := QueryDB(`
+        SELECT id, street, building, cabinet, corridor, floor, 
+               service_room, type, service_room_type, garage_number 
+        FROM reference_addresses WHERE id = ?`, id)
+	if err != nil || len(rows) == 0 {
+		http.Error(w, "Адрес не найден", http.StatusNotFound)
+		return
+	}
+
+	// Рендерим HTML-компонент с data-атрибутами для Vue
+	templates.ExecuteTemplate(w, "components/address_edit_form", rows[0])
 }
+func setupRoutes() {
+	// Инициализация шаблонов
+	if err := initTemplates(); err != nil {
+		log.Fatalf("Ошибка инициализации шаблонов: %v", err)
+	}
 
-// Статические файлы из embedded FS
-http.Handle("/static/", frontend.StaticFileServer(http.FS(frontend.StaticFS)))
+	// Статические файлы из embedded FS
+	http.Handle("/static/", frontend.StaticFileServer(http.FS(frontend.StaticFS)))
 
-http.HandleFunc("/", recoverMiddleware(indexHandler))
-http.HandleFunc("/login", recoverMiddleware(loginHandler))
-http.HandleFunc("/logout", recoverMiddleware(logoutHandler))
+	http.HandleFunc("/", recoverMiddleware(indexHandler))
+	http.HandleFunc("/login", recoverMiddleware(loginHandler))
+	http.HandleFunc("/logout", recoverMiddleware(logoutHandler))
 
-// Справочники
-http.HandleFunc("/api/reference/addresses", recoverMiddleware(authMiddleware(apiReferenceAddressesHandler)))
-http.HandleFunc("/api/reference/addresses/", recoverMiddleware(authMiddleware(apiReferenceAddressesHandler)))
-http.HandleFunc("/api/reference/employees", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
-http.HandleFunc("/api/reference/employees/", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
-http.HandleFunc("/api/reference/workstations", recoverMiddleware(authMiddleware(apiReferenceWorkstationsHandler)))
-http.HandleFunc("/api/reference/workstations/", recoverMiddleware(authMiddleware(apiReferenceWorkstationsHandler)))
-http.HandleFunc("/api/reference/hosts", recoverMiddleware(authMiddleware(apiReferenceHostsHandler)))
-http.HandleFunc("/api/reference/hosts/", recoverMiddleware(authMiddleware(apiReferenceHostsHandler)))
-http.HandleFunc("/api/reference/network-equipment", recoverMiddleware(authMiddleware(apiReferenceNetworkEquipmentHandler)))
-http.HandleFunc("/api/reference/network-equipment/", recoverMiddleware(authMiddleware(apiReferenceNetworkEquipmentHandler)))
-http.HandleFunc("/api/reference/network-mfps", recoverMiddleware(authMiddleware(apiReferenceNetworkMFPsHandler)))
-http.HandleFunc("/api/reference/network-mfps/", recoverMiddleware(authMiddleware(apiReferenceNetworkMFPsHandler)))
-http.HandleFunc("/api/reference/ip-phones", recoverMiddleware(authMiddleware(apiReferenceIPPhonesHandler)))
-http.HandleFunc("/api/reference/ip-phones/", recoverMiddleware(authMiddleware(apiReferenceIPPhonesHandler)))
+	// Справочники
+	http.HandleFunc("/api/reference/addresses", recoverMiddleware(authMiddleware(apiReferenceAddressesHandler)))
+	http.HandleFunc("/api/reference/addresses/", recoverMiddleware(authMiddleware(apiReferenceAddressesHandler)))
+	http.HandleFunc("/api/reference/addresses/edit-form/", recoverMiddleware(authMiddleware(apiAddressEditFormHandler)))
+	http.HandleFunc("/api/reference/employees", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
+	http.HandleFunc("/api/reference/employees/", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
+	http.HandleFunc("/api/reference/workstations", recoverMiddleware(authMiddleware(apiReferenceWorkstationsHandler)))
+	http.HandleFunc("/api/reference/workstations/", recoverMiddleware(authMiddleware(apiReferenceWorkstationsHandler)))
+	http.HandleFunc("/api/reference/hosts", recoverMiddleware(authMiddleware(apiReferenceHostsHandler)))
+	http.HandleFunc("/api/reference/hosts/", recoverMiddleware(authMiddleware(apiReferenceHostsHandler)))
+	http.HandleFunc("/api/reference/network-equipment", recoverMiddleware(authMiddleware(apiReferenceNetworkEquipmentHandler)))
+	http.HandleFunc("/api/reference/network-equipment/", recoverMiddleware(authMiddleware(apiReferenceNetworkEquipmentHandler)))
+	http.HandleFunc("/api/reference/network-mfps", recoverMiddleware(authMiddleware(apiReferenceNetworkMFPsHandler)))
+	http.HandleFunc("/api/reference/network-mfps/", recoverMiddleware(authMiddleware(apiReferenceNetworkMFPsHandler)))
+	http.HandleFunc("/api/reference/ip-phones", recoverMiddleware(authMiddleware(apiReferenceIPPhonesHandler)))
+	http.HandleFunc("/api/reference/ip-phones/", recoverMiddleware(authMiddleware(apiReferenceIPPhonesHandler)))
 
-// Существующие эндпоинты (обновлены для работы с новой схемой)
-http.HandleFunc("/api/credentials", recoverMiddleware(authMiddleware(apiCredentialsHandler)))
-http.HandleFunc("/api/credentials/", recoverMiddleware(authMiddleware(apiCredentialsHandler)))
-http.HandleFunc("/api/scripts", recoverMiddleware(authMiddleware(apiScriptsHandler)))
-http.HandleFunc("/api/scripts/", recoverMiddleware(authMiddleware(apiScriptsHandler)))
-http.HandleFunc("/api/tasks", recoverMiddleware(authMiddleware(apiTasksHandler)))
-http.HandleFunc("/api/tasks/", recoverMiddleware(authMiddleware(apiTaskControlHandler)))
-http.HandleFunc("/api/logs", recoverMiddleware(authMiddleware(apiLogsHandler)))
-http.HandleFunc("/api/execute-command", recoverMiddleware(authMiddleware(apiExecuteCommandHandler)))
-http.HandleFunc("/api/user", recoverMiddleware(authMiddleware(apiUserHandler)))
+	// Существующие эндпоинты (обновлены для работы с новой схемой)
+	http.HandleFunc("/api/credentials", recoverMiddleware(authMiddleware(apiCredentialsHandler)))
+	http.HandleFunc("/api/credentials/", recoverMiddleware(authMiddleware(apiCredentialsHandler)))
+	http.HandleFunc("/api/scripts", recoverMiddleware(authMiddleware(apiScriptsHandler)))
+	http.HandleFunc("/api/scripts/", recoverMiddleware(authMiddleware(apiScriptsHandler)))
+	http.HandleFunc("/api/tasks", recoverMiddleware(authMiddleware(apiTasksHandler)))
+	http.HandleFunc("/api/tasks/", recoverMiddleware(authMiddleware(apiTaskControlHandler)))
+	http.HandleFunc("/api/logs", recoverMiddleware(authMiddleware(apiLogsHandler)))
+	http.HandleFunc("/api/execute-command", recoverMiddleware(authMiddleware(apiExecuteCommandHandler)))
+	http.HandleFunc("/api/user", recoverMiddleware(authMiddleware(apiUserHandler)))
 
-// Обработчик для загрузки контента разделов через HTMX
-http.HandleFunc("/api/content/", recoverMiddleware(authMiddleware(contentSectionHandler)))
+	// Обработчик для загрузки контента разделов через HTMX
+	http.HandleFunc("/api/content/", recoverMiddleware(authMiddleware(contentSectionHandler)))
 }
 
 func main() {
