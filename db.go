@@ -19,7 +19,7 @@ const (
 	DEFAULT_DB_PATH        = "data.db"
 	DEFAULT_LOGS_DIR       = "logs"
 	LOG_PREFIX             = "andy-key"
-	CURRENT_SCHEMA_VERSION = "0.0.4.2"
+	CURRENT_SCHEMA_VERSION = "0.0.5"
 )
 
 var (
@@ -250,6 +250,10 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 func detectDBVersion() string {
 	// Проверяем наличие таблицы из версии 0.0.4.1 (platform_settings с footer_text)
 	if exists, _ := tableExists("reference_addresses"); exists {
+		// AK-2.2.0 (Фаза 1): колонка type появилась в схеме 0.0.5
+		if exists, _ := columnExists("reference_addresses", "type"); exists {
+			return "0.0.5"
+		}
 		// Дополнительная проверка: наличие platform_settings для определения 0.0.4.1
 		if exists, _ := tableExists("platform_settings"); exists {
 			return "0.0.4.1"
@@ -285,7 +289,7 @@ func migrateDB(fromVersion, toVersion string) error {
 	logDiagnostic(fmt.Sprintf("Начало миграции: %s → %s", fromVersion, toVersion))
 	
 	// Определяем последовательность миграций
-	versions := []string{"0.0.0", "0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.4.1", "0.0.4.2"}
+	versions := []string{"0.0.0", "0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.4.1", "0.0.4.2", "0.0.5"}
 	startIdx := -1
 	endIdx := -1
 	for i, v := range versions {
@@ -321,6 +325,8 @@ func migrateDB(fromVersion, toVersion string) error {
 			err = migrate_0_0_4_to_0_0_4_1()
 		case "0.0.4.2":
 			err = migrate_0_0_4_1_to_0_0_4_2()
+		case "0.0.5":
+			err = migrate_0_0_4_2_to_0_0_5()
 		default:
 			return fmt.Errorf("неизвестная версия миграции: %s", next)
 		}
@@ -612,6 +618,56 @@ func migrate_0_0_4_1_to_0_0_4_2() error {
 	escapedVersion := strings.ReplaceAll("0.0.4.2", "'", "''")
 	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
 	logDiagnostic("Миграция 0.0.4.1→0.0.4.2: завершена успешно")
+	return nil
+}
+
+// Миграция 0.0.4.2 → 0.0.5 (AK-2.2.0, Фаза 1 «Адреса»): перевод таблицы адресов
+// на полный контракт Vue-островов: type, service_room_type, garage_number.
+func migrate_0_0_4_2_to_0_0_5() error {
+	logDiagnostic("Миграция 0.0.4.2→0.0.5: расширение контракта reference_addresses")
+
+	addColumns := []struct {
+		name  string
+		query string
+	}{
+		{"type", `ALTER TABLE reference_addresses ADD COLUMN type TEXT DEFAULT 'cabinet'`},
+		{"service_room_type", `ALTER TABLE reference_addresses ADD COLUMN service_room_type TEXT`},
+		{"garage_number", `ALTER TABLE reference_addresses ADD COLUMN garage_number TEXT`},
+	}
+
+	for _, col := range addColumns {
+		exists, err := columnExists("reference_addresses", col.name)
+		if err != nil {
+			return fmt.Errorf("ошибка проверки наличия колонки %s: %v", col.name, err)
+		}
+		if !exists {
+			if err := ExecDB(col.query); err != nil {
+				return fmt.Errorf("ошибка добавления колонки %s: %v", col.name, err)
+			}
+			logPanel("Миграция 0.0.4.2→0.0.5: добавлена колонка " + col.name + " в reference_addresses")
+		} else {
+			logDiagnostic("Миграция 0.0.4.2→0.0.5: колонка " + col.name + " уже существует, пропускаем")
+		}
+	}
+
+	// Приведение существующих записей к новому контракту
+	if _, err := QueryDB("UPDATE reference_addresses SET type = 'cabinet' WHERE COALESCE(type, '') = ''"); err != nil {
+		logDiagnostic("Миграция 0.0.4.2→0.0.5: нормализация type: " + err.Error())
+	}
+	if _, err := QueryDB("UPDATE reference_addresses SET type = 'corridor' WHERE type = 'cabinet' AND COALESCE(cabinet, '') = '' AND COALESCE(corridor, '') != ''"); err != nil {
+		logDiagnostic("Миграция 0.0.4.2→0.0.5: вывод type=corridor: " + err.Error())
+	}
+	if _, err := QueryDB("UPDATE reference_addresses SET type = 'service_room' WHERE type = 'cabinet' AND COALESCE(cabinet, '') = '' AND COALESCE(corridor, '') = '' AND COALESCE(service_room, '') != ''"); err != nil {
+		logDiagnostic("Миграция 0.0.4.2→0.0.5: вывод type=service_room: " + err.Error())
+	}
+	// Гаражи старого формата: service_room = 'garage' -> подтип garage
+	if _, err := QueryDB("UPDATE reference_addresses SET service_room_type = 'garage', garage_number = cabinet, cabinet = NULL WHERE COALESCE(service_room, '') = 'garage' AND COALESCE(service_room_type, '') = ''"); err != nil {
+		logDiagnostic("Миграция 0.0.4.2→0.0.5: перенос гаражей: " + err.Error())
+	}
+
+	escapedVersion := strings.ReplaceAll("0.0.5", "'", "''")
+	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
+	logDiagnostic("Миграция 0.0.4.2→0.0.5: завершена успешно")
 	return nil
 }
 
