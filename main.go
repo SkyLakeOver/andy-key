@@ -237,24 +237,28 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch section {
 	case "addresses":
-		search := r.URL.Query().Get("search")
-		typeFilter := r.URL.Query().Get("type_filter")
+		// Фаза 1 (AK-2.2.0): серверная фильтрация SSR-таблицы адресов.
+		// WHERE собирается только параметризованными условиями (без конкатенации значений).
+		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		typeFilter := strings.TrimSpace(r.URL.Query().Get("type_filter"))
 
-		query := `SELECT id, street, building, cabinet, corridor, floor, 
-                     service_room, type, service_room_type, garage_number, created_at 
-              FROM reference_addresses`
+		// SELECT включает ВСЕ колонки контракта плюс created_at (единый список addressColumns)
+		query := "SELECT " + addressColumns + " FROM reference_addresses"
 
 		var conditions []string
-		var args []interface{}
+		var args []string
 
 		if search != "" {
-			conditions = append(conditions, "(street LIKE ? OR building LIKE ? OR cabinet LIKE ? OR corridor LIKE ? OR service_room LIKE ?)")
-			for i := 0; i < 5; i++ {
-				args = append(args, "%"+search+"%")
+			// LIKE по улице, дому, кабинету, коридору, служебному помещению, номеру гаража
+			conditions = append(conditions, "(street LIKE ? OR building LIKE ? OR cabinet LIKE ? OR corridor LIKE ? OR service_room LIKE ? OR garage_number LIKE ?)")
+			like := "%" + search + "%"
+			for i := 0; i < 6; i++ {
+				args = append(args, like)
 			}
 		}
 
 		if typeFilter != "" {
+			// Точное совпадение типа адреса
 			conditions = append(conditions, "type = ?")
 			args = append(args, typeFilter)
 		}
@@ -268,8 +272,10 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			dbError = err
 		} else {
+			// Ключ "Addresses" с ЗАГЛАВНОЙ буквы — шаблон итерирует .Addresses
 			data["Addresses"] = rows
 			data["Search"] = search
+			data["TypeFilter"] = typeFilter
 		}
 	case "employees":
 		rows, err := QueryDB(`SELECT id, full_name, short_name, phone_city, phone_internal, address_id, created_at FROM reference_employees ORDER BY full_name`)
@@ -2483,30 +2489,10 @@ func apiExecuteCommandHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ==================== НАСТРОЙКА МАРШРУТОВ ====================
-// ==================== МОДАЛКА РЕДАКТИРОВАНИЯ АДРЕСА (HTML для Vue-острова) ====================
-func apiAddressEditFormHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-
-	// Извлекаем ID из URL
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/reference/addresses/edit-form/")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		http.Error(w, "Некорректный ID", http.StatusBadRequest)
-		return
-	}
-
-	rows, err := QueryDB(`
-        SELECT id, street, building, cabinet, corridor, floor, 
-               service_room, type, service_room_type, garage_number 
-        FROM reference_addresses WHERE id = ?`, id)
-	if err != nil || len(rows) == 0 {
-		http.Error(w, "Адрес не найден", http.StatusNotFound)
-		return
-	}
-
-	// Рендерим HTML-компонент с data-атрибутами для Vue
-	templates.ExecuteTemplate(w, "components/address_edit_form.html", rows[0])
-}
+// Фаза 1 (AK-2.2.0): старый шаблонный обработчик apiAddressEditFormHandler удалён —
+// HTML-фрагмент модалки редактирования (data-island="address-edit" с экранированным
+// data-initial-data) генерируется в addresses_islands.go и регистрируется через
+// registerAddressIslandRoutes ниже.
 func setupRoutes() {
 	// Инициализация шаблонов
 	if err := initTemplates(); err != nil {
@@ -2520,12 +2506,12 @@ func setupRoutes() {
 	http.HandleFunc("/login", recoverMiddleware(loginHandler))
 	http.HandleFunc("/logout", recoverMiddleware(logoutHandler))
 
-	http.HandleFunc("/api/reference/addresses/edit-form/", recoverMiddleware(authMiddleware(apiAddressEditFormHandler)))
-
 	// Справочники
 	http.HandleFunc("/api/reference/addresses", recoverMiddleware(authMiddleware(apiReferenceAddressesHandler)))
 	http.HandleFunc("/api/reference/addresses/", recoverMiddleware(authMiddleware(apiReferenceAddressesHandler)))
-	http.HandleFunc("/api/reference/addresses/edit-form/", recoverMiddleware(authMiddleware(apiAddressEditFormHandler)))
+	// Island-маршруты раздела «Адреса» (Фаза 1, AK-2.2.0): создание/обновление/удаление
+	// через Vue-острова + HTML-фрагмент формы редактирования
+	registerAddressIslandRoutes(authMiddleware)
 	http.HandleFunc("/api/reference/employees", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
 	http.HandleFunc("/api/reference/employees/", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
 	http.HandleFunc("/api/reference/workstations", recoverMiddleware(authMiddleware(apiReferenceWorkstationsHandler)))
