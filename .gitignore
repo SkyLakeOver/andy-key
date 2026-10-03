@@ -1,1 +1,9 @@
-(empty)
+# Compiled/Binary files
+*.exe
+
+# Logs and temp files
+logs/
+*.log
+
+# Sensitive data
+*.key

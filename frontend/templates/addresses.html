@@ -9,18 +9,16 @@
 
     <!-- Панель фильтров (HTMX, серверная фильтрация) -->
     <div class="filters-bar mb-3">
-        <form 
-            hx-get="/api/content/addresses" 
-            hx-target="#addresses-table-body" 
-            hx-swap="innerHTML"
-            hx-push-url="false">
-            <div class="filter-row">
+        <div class="filter-row">
                 <input 
                     type="text" 
                     name="search" 
+                    value="{{.Search}}"
                     placeholder="Поиск по улице, дому..."
                     hx-get="/api/content/addresses"
                     hx-target="#addresses-table-body"
+                    hx-swap="outerHTML"
+                    hx-select="#addresses-table-body"
                     hx-trigger="keyup changed delay:400ms"
                     hx-include="[name='type_filter']"
                     class="filter-input">
@@ -29,6 +27,8 @@
                     name="type_filter"
                     hx-get="/api/content/addresses"
                     hx-target="#addresses-table-body"
+                    hx-swap="outerHTML"
+                    hx-select="#addresses-table-body"
                     hx-trigger="change"
                     hx-include="[name='search']"
                     class="filter-select">
@@ -37,8 +37,7 @@
                     <option value="corridor">Коридор</option>
                     <option value="service_room">Служебное помещение</option>
                 </select>
-            </div>
-        </form>
+        </div>
     </div>
 
     <!-- Таблица адресов (SSR через Go templates) -->
@@ -96,15 +95,15 @@
                             hx-get="/api/reference/addresses/edit-form/{{.id}}"
                             hx-target="#edit-address-modal-content"
                             hx-swap="innerHTML"
-                            onclick="document.getElementById('edit-address-modal').style.display='flex'">
+                            hx-on::after-request="if(event.detail.successful) document.getElementById('edit-address-modal').style.display='flex'">
                             ✏️
                         </button>
                         <button 
                             class="btn btn-sm btn-danger"
-                            hx-delete="/api/reference/addresses/{{.id}}"
-                            hx-target="#addresses-table-body"
-                            hx-swap="innerHTML"
-                            hx-confirm="Вы уверены, что хотите удалить этот адрес?">
+                            hx-delete="/api/reference/addresses/island/{{.id}}"
+                            hx-swap="none"
+                            hx-confirm="Вы уверены, что хотите удалить этот адрес?"
+                            hx-on::after-request="if(event.detail.successful) refreshAddressesTable()">
                             🗑️
                         </button>
                     </td>
@@ -128,9 +127,8 @@
     <div id="edit-address-modal" class="modal-overlay" style="display:none;">
         <div class="modal-content">
             <button class="modal-close" onclick="document.getElementById('edit-address-modal').style.display='none'">×</button>
-            <div id="edit-address-modal-content" data-island="address-edit">
-                <!-- Содержимое загрузится через HTMX -->
-                <div class="loading">Загрузка...</div>
+            <div id="edit-address-modal-content">
+                <!-- HTML-фрагмент острова придёт через HTMX с атрибутом data-island="address-edit" -->
             </div>
         </div>
     </div>
