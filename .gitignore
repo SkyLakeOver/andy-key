@@ -7,3 +7,10 @@ logs/
 
 # Sensitive data
 *.key
+cookies.txt
+
+# SQLite databases
+*.db
+
+# Compiled binaries (Linux)
+andy-key
