@@ -297,6 +297,63 @@ func checkAddressUsage(id int) string {
 	return ""
 }
 
+// isUniqueViolation — проверка, что ошибка БД вызвана нарушением UNIQUE-ограничения.
+func isUniqueViolation(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint")
+}
+
+// isAddressDuplicate — серверная предпроверка дублей адреса.
+// Предпроверка дублей: UNIQUE-индекс не ловит дубли с NULL-колонками
+// (SQLite считает NULL различными), поэтому повтор кабинета/коридора с теми же
+// пустыми неиспользуемыми полями нужно отлавливать до вставки.
+// Сравнение по всем колонкам контракта: непустые значения сопоставляются через
+// плейсхолдеры ?, пустые — через IS NULL (голый SQL-литерал NULL, НЕ аргумент).
+// excludeID > 0 (для UPDATE) исключает саму редактируемую запись.
+func isAddressDuplicate(req *IslandAddressRequest, excludeID int) bool {
+	conds := []string{"street = ?", "building = ?", "type = ?"}
+	args := []interface{}{req.Street, req.Building, req.Type}
+
+	pairs := []struct {
+		col    string
+		value  string
+	}{
+		{"cabinet", req.Cabinet},
+		{"corridor", req.Corridor},
+		{"service_room", req.ServiceRoom},
+		{"service_room_type", req.ServiceRoomType},
+		{"garage_number", req.GarageNumber},
+	}
+	for _, p := range pairs {
+		if p.value != "" {
+			conds = append(conds, p.col+" = ?")
+			args = append(args, p.value)
+		} else {
+			conds = append(conds, p.col+" IS NULL")
+		}
+	}
+
+	// этаж: CHECK-колонка, пустой хранится как NULL (см. addressFloorSQLArg)
+	if f := addressFloorSQLArg(req.Floor); f == "NULL" {
+		conds = append(conds, "floor IS NULL")
+	} else {
+		conds = append(conds, "floor = ?")
+		args = append(args, f)
+	}
+
+	if excludeID > 0 {
+		conds = append(conds, "id != ?")
+		args = append(args, excludeID)
+	}
+
+	query := "SELECT id FROM reference_addresses WHERE " + strings.Join(conds, " AND ")
+	rows, err := querySafe(query, args...)
+	if err != nil {
+		log.Printf("Предпроверка дублей адреса не выполнена: %v", err)
+		return false
+	}
+	return len(rows) >= 1
+}
+
 // decodeIslandAddressRequest декодирует JSON-тело запроса острова.
 func decodeIslandAddressRequest(w http.ResponseWriter, r *http.Request) (IslandAddressRequest, bool) {
 	var req IslandAddressRequest
@@ -325,6 +382,12 @@ func apiAddressIslandCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	req, ok := decodeIslandAddressRequest(w, r)
 	if !ok {
+		return
+	}
+
+	// Предпроверка дублей: UNIQUE-индекс не ловит дубли с NULL-колонками.
+	if isAddressDuplicate(&req, 0) {
+		writeIslandJSONError(w, http.StatusBadRequest, "Такой адрес уже существует")
 		return
 	}
 
@@ -361,6 +424,12 @@ func apiAddressIslandItemHandler(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPut:
 		req, ok := decodeIslandAddressRequest(w, r)
 		if !ok {
+			return
+		}
+		// Предпроверка дублей: UNIQUE-индекс не ловит дубли с NULL-колонками.
+		// excludeID = id — смена адреса на собственную запись не считается дублем.
+		if isAddressDuplicate(&req, id) {
+			writeIslandJSONError(w, http.StatusBadRequest, "Такой адрес уже существует")
 			return
 		}
 		if err := execAddressUpdate(&req, id); err != nil {
