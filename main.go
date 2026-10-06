@@ -142,31 +142,18 @@ func initTemplates() error {
 		}
 
 		name := strings.TrimSuffix(strings.TrimPrefix(match, "templates/"), ".html")
-		tmpl, err := templates.New(name).Parse(string(content))
+		_, err = templates.New(name).Parse(string(content))
 		if err != nil {
 			return fmt.Errorf("ошибка парсинга шаблона %s: %w", match, err)
 		}
-		templates = tmpl
 	}
 
-	// Дополнительно загружаем компоненты из подпапки components
-	componentPattern := "templates/components/*.html"
-	componentMatches, err := fs.Glob(frontend.TemplatesFS, componentPattern)
-	if err != nil {
-		return fmt.Errorf("ошибка поиска компонентов: %w", err)
-	}
-
-	for _, match := range componentMatches {
-		content, err := frontend.TemplatesFS.ReadFile(match)
-		if err != nil {
-			return fmt.Errorf("ошибка чтения компонента %s: %w", match, err)
-		}
-
-		_, err = templates.Parse(string(content))
-		if err != nil {
-			return fmt.Errorf("ошибка парсинга компонента %s: %w", match, err)
-		}
-	}
+	// Компоненты из подпапки components НЕ парсятся в общее дерево шаблонов:
+	// template.Template#Parse переключает «последний разобранный шаблон» дерева,
+	// и ExecuteTemplate(w, "<раздел>") без {{define}} возвращал бы содержимое
+	// компонента вместо раздела (например, /api/content/workstations отдавал
+	// HTML-фрагмент address_edit_form.html). Фрагменты edit-form теперь
+	// генерируются island-эндпоинтами напрямую (см. *_islands.go).
 
 	return nil
 }

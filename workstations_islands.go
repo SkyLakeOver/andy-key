@@ -356,18 +356,33 @@ func apiWorkstationEditFormHTMLHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	row := rows[0]
 
+	// Нормализация: SQLite возвращает NULL как "<nil>", boolean — как "true"/"false".
+	// Приводим к контракту острова (все поля — строки, NULL → "", bool → "1"/"0").
+	clean := func(v string) string {
+		if v == "<nil>" {
+			return ""
+		}
+		return v
+	}
+	toFlag := func(v string) string {
+		v = clean(v)
+		if v == "true" || v == "1" {
+			return "1"
+		}
+		return "0"
+	}
 	payload := map[string]string{
-		"id":                 row["id"],
-		"inventory_number":   row["inventory_number"],
-		"serial_number":      row["serial_number"],
-		"seal_numbers":       row["seal_numbers"],
-		"monitor_count":      row["monitor_count"],
-		"employee_id":        row["employee_id"], // "" если не назначен
-		"address_id":         row["address_id"],
-		"is_vacant":          row["is_vacant"],
-		"replacement_done":   row["replacement_done"],
-		"replacement_date":   row["replacement_date"],
-		"replacement_letter": row["replacement_letter"],
+		"id":                 clean(row["id"]),
+		"inventory_number":   clean(row["inventory_number"]),
+		"serial_number":      clean(row["serial_number"]),
+		"seal_numbers":       clean(row["seal_numbers"]),
+		"monitor_count":      clean(row["monitor_count"]),
+		"employee_id":        clean(row["employee_id"]), // "" если не назначен
+		"address_id":         clean(row["address_id"]),
+		"is_vacant":          toFlag(row["is_vacant"]),
+		"replacement_done":   toFlag(row["replacement_done"]),
+		"replacement_date":   clean(row["replacement_date"]),
+		"replacement_letter": clean(row["replacement_letter"]),
 	}
 
 	jsonBytes, err := json.Marshal(payload)
