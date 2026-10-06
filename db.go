@@ -1606,6 +1606,9 @@ func QueryDB(query string, args ...string) ([]map[string]string, error) {
 				} else {
 					result[i][key] = "0"
 				}
+			// JSON null → пустая строка: строка "<nil>" отравляла edit-формы и SSR-вывод (floor, nullable-колонки)
+			case nil:
+				result[i][key] = ""
 			default:
 				result[i][key] = fmt.Sprintf("%v", v)
 			}

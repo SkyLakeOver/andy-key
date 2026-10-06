@@ -8,3 +8,7 @@ andy-key.exe
 *.db
 *.key
 cookies.txt
+
+# cookie jars / test artifacts
+cj.txt
+tok.txt

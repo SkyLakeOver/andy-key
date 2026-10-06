@@ -531,6 +531,15 @@ function mountIslands(container) {
         let component = null;
         let props = {};
 
+        // Универсальный парсинг data-initial-data для всех edit-островов.
+        // Применяется ко всем островам: если атрибут есть — передаём props.initialData.
+        try {
+            const dataAttr = el.getAttribute('data-initial-data');
+            if (dataAttr) props.initialData = JSON.parse(dataAttr);
+        } catch (e) {
+            console.warn('Не удалось распарсить initialData для ' + islandName + ':', e);
+        }
+
         if (islandName === 'address-form') {
             component = AddressForm;
         } else if (islandName === 'workstation-form') {
@@ -539,12 +548,6 @@ function mountIslands(container) {
             component = WorkstationEditModal;
         } else if (islandName === 'address-edit') {
             component = AddressEditModal;
-            try {
-                const dataAttr = el.getAttribute('data-initial-data');
-                if (dataAttr) props.initialData = JSON.parse(dataAttr);
-            } catch (e) {
-                console.warn('Не удалось распарсить initialData для address-edit:', e);
-            }
         }
 
         if (component) {
@@ -574,19 +577,19 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Перед заменой контента — демонтируем острова внутри целевого элемента
-document.body.addEventListener('htmx:beforeSwap', (e) => {
+document.addEventListener('htmx:beforeSwap', (e) => {
     const target = e.detail && e.detail.target;
     if (target) unmountIslands(target);
 });
 
 // После замены контента — монтируем новые острова
-document.body.addEventListener('htmx:afterSwap', (e) => {
+document.addEventListener('htmx:afterSwap', (e) => {
     const target = e.detail && e.detail.target;
     if (target) mountIslands(target);
 });
 
 // Дополнительная страховка для OOB-вставок
-document.body.addEventListener('htmx:afterSettle', () => {
+document.addEventListener('htmx:afterSettle', () => {
     mountIslands(document.body);
 });
 
