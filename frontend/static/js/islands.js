@@ -531,6 +531,15 @@ function mountIslands(container) {
         let component = null;
         let props = {};
 
+        // Универсальный парсинг data-initial-data для всех edit-островов.
+        // Применяется ко всем островам: если атрибут есть — передаём props.initialData.
+        try {
+            const dataAttr = el.getAttribute('data-initial-data');
+            if (dataAttr) props.initialData = JSON.parse(dataAttr);
+        } catch (e) {
+            console.warn('Не удалось распарсить initialData для ' + islandName + ':', e);
+        }
+
         if (islandName === 'address-form') {
             component = AddressForm;
         } else if (islandName === 'workstation-form') {
@@ -539,12 +548,6 @@ function mountIslands(container) {
             component = WorkstationEditModal;
         } else if (islandName === 'address-edit') {
             component = AddressEditModal;
-            try {
-                const dataAttr = el.getAttribute('data-initial-data');
-                if (dataAttr) props.initialData = JSON.parse(dataAttr);
-            } catch (e) {
-                console.warn('Не удалось распарсить initialData для address-edit:', e);
-            }
         }
 
         if (component) {

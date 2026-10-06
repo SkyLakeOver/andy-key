@@ -158,18 +158,35 @@ func addressFloorSQLArg(floor string) string {
 }
 
 // execAddressInsert выполняет INSERT по единому списку колонок контракта.
+// Пустой этаж вставляется как голодный NULL (без кавычек): bindArgs оборачивает
+// каждый аргумент в строковый литерал, а 'NULL' нарушает CHECK (floor BETWEEN 1 AND 5).
 func execAddressInsert(req *IslandAddressRequest) error {
+	floor := addressFloorSQLArg(req.Floor)
+	if floor == "NULL" {
+		return execSafe(
+			"INSERT INTO reference_addresses (street, building, type, cabinet, corridor, floor, service_room, service_room_type, garage_number) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?)",
+			req.Street, req.Building, req.Type, req.Cabinet, req.Corridor, req.ServiceRoom, req.ServiceRoomType, req.GarageNumber,
+		)
+	}
 	return execSafe(
 		"INSERT INTO reference_addresses (street, building, type, cabinet, corridor, floor, service_room, service_room_type, garage_number) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		req.Street, req.Building, req.Type, req.Cabinet, req.Corridor, addressFloorSQLArg(req.Floor), req.ServiceRoom, req.ServiceRoomType, req.GarageNumber,
+		req.Street, req.Building, req.Type, req.Cabinet, req.Corridor, floor, req.ServiceRoom, req.ServiceRoomType, req.GarageNumber,
 	)
 }
 
 // execAddressUpdate выполняет UPDATE по единому списку колонок контракта.
+// Пустой этаж обновляется на голодный NULL (см. комментарий в execAddressInsert).
 func execAddressUpdate(req *IslandAddressRequest, id int) error {
+	floor := addressFloorSQLArg(req.Floor)
+	if floor == "NULL" {
+		return execSafe(
+			"UPDATE reference_addresses SET street = ?, building = ?, type = ?, cabinet = ?, corridor = ?, floor = NULL, service_room = ?, service_room_type = ?, garage_number = ? WHERE id = ?",
+			req.Street, req.Building, req.Type, req.Cabinet, req.Corridor, req.ServiceRoom, req.ServiceRoomType, req.GarageNumber, id,
+		)
+	}
 	return execSafe(
 		"UPDATE reference_addresses SET street = ?, building = ?, type = ?, cabinet = ?, corridor = ?, floor = ?, service_room = ?, service_room_type = ?, garage_number = ? WHERE id = ?",
-		req.Street, req.Building, req.Type, req.Cabinet, req.Corridor, addressFloorSQLArg(req.Floor), req.ServiceRoom, req.ServiceRoomType, req.GarageNumber, id,
+		req.Street, req.Building, req.Type, req.Cabinet, req.Corridor, floor, req.ServiceRoom, req.ServiceRoomType, req.GarageNumber, id,
 	)
 }
 
