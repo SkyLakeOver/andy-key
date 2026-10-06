@@ -340,6 +340,187 @@ window.refreshAddressesTable = function () {
     });
 };
 
+
+// ==================== Контракт АРМ (ВСЕ поля — строки) ====================
+const workstationFormMixin = {
+    methods: {
+        emptyForm() {
+            return {
+                inventory_number: '', serial_number: '', seal_numbers: '',
+                monitor_count: '1', employee_id: '', address_id: '',
+                is_vacant: '0', replacement_done: '0',
+                replacement_date: '', replacement_letter: ''
+            };
+        },
+        buildPayload() {
+            const f = this.formData;
+            return {
+                inventory_number: String(f.inventory_number || ''),
+                serial_number: String(f.serial_number || ''),
+                seal_numbers: String(f.seal_numbers || ''),
+                monitor_count: String(f.monitor_count || '1'),
+                employee_id: String(f.employee_id || ''),
+                address_id: String(f.address_id || ''),
+                is_vacant: f.is_vacant ? '1' : '0',
+                replacement_done: f.replacement_done ? '1' : '0',
+                replacement_date: String(f.replacement_date || ''),
+                replacement_letter: String(f.replacement_letter || '')
+            };
+        }
+    }
+};
+
+const WorkstationForm = {
+    mixins: [workstationFormMixin],
+    data() { return { formData: this.emptyForm(), isSubmitting: false, error: '' }; },
+    methods: {
+        async submitForm() {
+            this.error = ''; this.isSubmitting = true;
+            try {
+                const r = await fetch('/api/reference/workstations/island', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(this.buildPayload())
+                });
+                if (!r.ok) {
+                    const t = await r.text();
+                    let msg = t;
+                    try { msg = JSON.parse(t).error || t; } catch(e) {}
+                    throw new Error(msg);
+                }
+                this.formData = this.emptyForm();
+                window.refreshWorkstationsTable();
+            } catch(e) { this.error = e.message || 'Ошибка'; }
+            finally { this.isSubmitting = false; }
+        }
+    },
+    template: `<div class="island-form">
+        <h3>Добавить АРМ</h3>
+        <div v-if="error" class="alert alert-danger">{{ error }}</div>
+        <div class="form-grid">
+            <div class="form-group"><label>Инвентарный номер *</label>
+                <input type="text" v-model="formData.inventory_number"></div>
+            <div class="form-group"><label>Серийный номер</label>
+                <input type="text" v-model="formData.serial_number"></div>
+            <div class="form-group"><label>Адрес *</label>
+                <input type="text" v-model="formData.address_id" placeholder="ID адреса"></div>
+            <div class="form-group"><label>Сотрудник</label>
+                <input type="text" v-model="formData.employee_id" placeholder="ID сотрудника"></div>
+            <div class="form-group"><label>Мониторы (1-5)</label>
+                <input type="number" v-model="formData.monitor_count" min="1" max="5"></div>
+            <div class="form-group"><label>Пломбы</label>
+                <input type="text" v-model="formData.seal_numbers"></div>
+            <div class="form-group"><label><input type="checkbox" v-model="formData.is_vacant" true-value="1" false-value="0"> Вакантное</label></div>
+            <div class="form-group"><label><input type="checkbox" v-model="formData.replacement_done" true-value="1" false-value="0"> Замена выполнена</label></div>
+            <div class="form-group" v-if="formData.replacement_done === '1' || formData.replacement_done === true"><label>Дата замены</label>
+                <input type="date" v-model="formData.replacement_date"></div>
+            <div class="form-group" v-if="formData.replacement_done === '1' || formData.replacement_done === true"><label>Буква замены</label>
+                <input type="text" v-model="formData.replacement_letter"></div>
+        </div>
+        <div class="form-actions">
+            <button @click="submitForm" :disabled="isSubmitting || !formData.inventory_number || !formData.address_id" class="btn btn-primary">
+                {{ isSubmitting ? '...' : 'Сохранить' }}
+            </button>
+        </div>
+    </div>`
+};
+
+const WorkstationEditModal = {
+    mixins: [workstationFormMixin],
+    props: ['initialData'],
+    data() {
+        return { formData: this.emptyForm(), workstationId: '', isSubmitting: false, error: '' };
+    },
+    created() {
+        const d = this.initialData || {};
+        const base = this.emptyForm();
+        Object.keys(base).forEach(k => {
+            if (d[k] !== undefined && d[k] !== null) {
+                let v = String(d[k]);
+                if ((k === 'is_vacant' || k === 'replacement_done')) {
+                    v = (v === '1' || v === 'true' || v === 'True') ? '1' : '0';
+                }
+                base[k] = v;
+            } else {
+                base[k] = '';
+            }
+        });
+        this.formData = base;
+        this.workstationId = d.id !== undefined && d.id !== null ? String(d.id) : '';
+    },
+    methods: {
+        closeModal() {
+            const m = document.getElementById('edit-workstation-modal');
+            if (m) m.style.display = 'none';
+        },
+        async updateWorkstation() {
+            this.error = ''; this.isSubmitting = true;
+            try {
+                const r = await fetch('/api/reference/workstations/island/' + this.workstationId, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(this.buildPayload())
+                });
+                if (!r.ok) {
+                    const t = await r.text();
+                    let msg = t;
+                    try { msg = JSON.parse(t).error || t; } catch(e) {}
+                    throw new Error(msg);
+                }
+                this.closeModal();
+                window.refreshWorkstationsTable();
+            } catch(e) { this.error = e.message || 'Ошибка'; }
+            finally { this.isSubmitting = false; }
+        }
+    },
+    template: `<div class="island-form">
+        <h3>Редактировать АРМ #{{ workstationId }}</h3>
+        <div v-if="error" class="alert alert-danger">{{ error }}</div>
+        <div class="form-grid">
+            <div class="form-group"><label>Инвентарный номер *</label>
+                <input type="text" v-model="formData.inventory_number"></div>
+            <div class="form-group"><label>Серийный номер</label>
+                <input type="text" v-model="formData.serial_number"></div>
+            <div class="form-group"><label>Адрес *</label>
+                <input type="text" v-model="formData.address_id"></div>
+            <div class="form-group"><label>Сотрудник</label>
+                <input type="text" v-model="formData.employee_id"></div>
+            <div class="form-group"><label>Мониторы (1-5)</label>
+                <input type="number" v-model="formData.monitor_count" min="1" max="5"></div>
+            <div class="form-group"><label>Пломбы</label>
+                <input type="text" v-model="formData.seal_numbers"></div>
+            <div class="form-group"><label><input type="checkbox" v-model="formData.is_vacant" true-value="1" false-value="0"> Вакантное</label></div>
+            <div class="form-group"><label><input type="checkbox" v-model="formData.replacement_done" true-value="1" false-value="0"> Замена выполнена</label></div>
+            <div class="form-group" v-if="formData.replacement_done === '1'"><label>Дата замены</label>
+                <input type="date" v-model="formData.replacement_date"></div>
+            <div class="form-group" v-if="formData.replacement_done === '1'"><label>Буква замены</label>
+                <input type="text" v-model="formData.replacement_letter"></div>
+        </div>
+        <div class="form-actions">
+            <button @click="closeModal" class="btn btn-secondary">Отмена</button>
+            <button @click="updateWorkstation" :disabled="isSubmitting" class="btn btn-primary">Обновить</button>
+        </div>
+    </div>`
+};
+
+window.refreshWorkstationsTable = function () {
+    const searchEl = document.querySelector('input[name="search"]');
+    const vacantEl = document.querySelector('select[name="vacant"]');
+    const addressEl = document.querySelector('select[name="address_id"]');
+    const params = new URLSearchParams();
+    if (searchEl && searchEl.value) params.set('search', searchEl.value);
+    if (vacantEl && vacantEl.value) params.set('vacant', vacantEl.value);
+    if (addressEl && addressEl.value) params.set('address_id', addressEl.value);
+    const qs = params.toString();
+    const url = '/api/content/workstations' + (qs ? '?' + qs : '');
+
+    htmx.ajax('GET', url, {
+        target: '#workstations-table-body',
+        swap: 'outerHTML',
+        select: '#workstations-table-body'
+    });
+};
+
 // ==================== Функции монтирования/демонтирования островов ==========
 function mountIslands(container) {
     if (!container || !container.querySelectorAll) return;
@@ -352,6 +533,10 @@ function mountIslands(container) {
 
         if (islandName === 'address-form') {
             component = AddressForm;
+        } else if (islandName === 'workstation-form') {
+            component = WorkstationForm;
+        } else if (islandName === 'workstation-edit') {
+            component = WorkstationEditModal;
         } else if (islandName === 'address-edit') {
             component = AddressEditModal;
             try {

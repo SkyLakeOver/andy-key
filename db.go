@@ -1541,15 +1541,33 @@ func ensureDefaultAdmin() {
 	}
 }
 
+// bindArgs последовательно подставляет аргументы вместо плейсхолдеров "?"
+// (Шаг 0, Фаза 2): sqlite3 CLI не принимает argv-список параметров, поэтому
+// каждый "?" заменяется на строковый литерал в одинарных кавычках с
+// экранированием внутренних кавычек удвоением. При пустом списке args
+// запрос возвращается как есть.
+func bindArgs(query string, args []string) string {
+	if len(args) == 0 {
+		return query
+	}
+	var sb strings.Builder
+	argIdx := 0
+	for i := 0; i < len(query); i++ {
+		c := query[i]
+		if c == '?' && argIdx < len(args) {
+			sb.WriteString("'" + strings.ReplaceAll(args[argIdx], "'", "''") + "'")
+			argIdx++
+		} else {
+			sb.WriteByte(c)
+		}
+	}
+	return sb.String()
+}
+
 // ИСПРАВЛЕННАЯ ФУНКЦИЯ: корректный парсинг всех типов данных из SQLite JSON
 func QueryDB(query string, args ...string) ([]map[string]string, error) {
-	cmdArgs := []string{"-json", DB_PATH}
-	for _, arg := range args {
-		cmdArgs = append(cmdArgs, arg)
-	}
-	cmdArgs = append(cmdArgs, query)
-	
-	cmd := exec.Command("sqlite3", cmdArgs...)
+	// Фундамент Шага 0: ОДИН SQL-аргумент (результат bindArgs), argv-параметры не передаются
+	cmd := exec.Command("sqlite3", "-json", DB_PATH, bindArgs(query, args))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("ошибка запроса: %v", err)
@@ -1599,13 +1617,8 @@ func QueryDB(query string, args ...string) ([]map[string]string, error) {
 
 // ИСПРАВЛЕННАЯ ФУНКЦИЯ: возврат к оригинальной логике без ломания компиляции
 func ExecDB(query string, args ...string) error {
-	cmdArgs := []string{DB_PATH}
-	for _, arg := range args {
-		cmdArgs = append(cmdArgs, arg)
-	}
-	cmdArgs = append(cmdArgs, query)
-	
-	cmd := exec.Command("sqlite3", cmdArgs...)
+	// Фундамент Шага 0: ОДИН SQL-аргумент (результат bindArgs), argv-параметры не передаются
+	cmd := exec.Command("sqlite3", DB_PATH, bindArgs(query, args))
 	_, err := cmd.CombinedOutput()  // ← ИСПОЛЬЗУЕМ ПОДЧЁРКИВАНИЕ _
 	
 	return err

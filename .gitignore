@@ -1,16 +1,10 @@
-# Compiled/Binary files
-*.exe
-
-# Logs and temp files
-logs/
+# Логи и временные файлы
 *.log
+logs/
 
-# Sensitive data
+# Собственные артефакты сборки и локальные данные
+andy-key
+andy-key.exe
+*.db
 *.key
 cookies.txt
-
-# SQLite databases
-*.db
-
-# Compiled binaries (Linux)
-andy-key
