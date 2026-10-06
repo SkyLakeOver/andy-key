@@ -1,16 +1,1 @@
-# Compiled/Binary files
-*.exe
-
-# Logs and temp files
-logs/
-*.log
-
-# Sensitive data
-*.key
-cookies.txt
-
-# SQLite databases
-*.db
-
-# Compiled binaries (Linux)
-andy-key
+(empty)
