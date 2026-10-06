@@ -1,14 +1,1 @@
-# Логи и временные файлы
-*.log
-logs/
-
-# Собственные артефакты сборки и локальные данные
-andy-key
-andy-key.exe
-*.db
-*.key
-cookies.txt
-
-# cookie jars / test artifacts
-cj.txt
-tok.txt
+(empty)

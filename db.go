@@ -1570,7 +1570,13 @@ func QueryDB(query string, args ...string) ([]map[string]string, error) {
 	cmd := exec.Command("sqlite3", "-json", DB_PATH, bindArgs(query, args))
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("ошибка запроса: %v", err)
+		// FIX: сохраняем combined output sqlite3 в тексте ошибки: текст stderr необходим
+		// для классификации ошибок (UNIQUE constraint) в обработчиках. Без него err.Error()
+		// содержит только "exit status N" и ветки strings.Contains(..., "UNIQUE constraint")
+		// недостижимы. Обогатившийся текст используется ТОЛЬКО для классификации и логов;
+		// сырой stderr в HTTP-тела ответов не выводится (обработчики отдают фиксированные
+		// человекочитаемые сообщения).
+		return nil, fmt.Errorf("ошибка запроса: %v: %s", err, strings.TrimSpace(string(output)))
 	}
 	
 	if len(output) == 0 {
@@ -1622,9 +1628,18 @@ func QueryDB(query string, args ...string) ([]map[string]string, error) {
 func ExecDB(query string, args ...string) error {
 	// Фундамент Шага 0: ОДИН SQL-аргумент (результат bindArgs), argv-параметры не передаются
 	cmd := exec.Command("sqlite3", DB_PATH, bindArgs(query, args))
-	_, err := cmd.CombinedOutput()  // ← ИСПОЛЬЗУЕМ ПОДЧЁРКИВАНИЕ _
-	
-	return err
+	output, err := cmd.CombinedOutput()
+
+	if err != nil {
+		// FIX: сохраняем combined output sqlite3 в тексте ошибки: текст stderr необходим
+		// для классификации ошибок (UNIQUE constraint) в обработчиках. Без него err.Error()
+		// содержит только "exit status N" и ветки strings.Contains(..., "UNIQUE constraint")
+		// недостижимы. Обогатившийся текст используется ТОЛЬКО для классификации и логов;
+		// сырой stderr в HTTP-тела ответов не выводится (обработчики отдают фиксированные
+		// человекочитаемые сообщения).
+		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
 }
 
 func GetCrypto() *Crypto {
