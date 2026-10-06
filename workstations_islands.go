@@ -45,15 +45,22 @@ type IslandWorkstationRequest struct {
 // workstationColumns — ЕДИНЫЙ список колонок контракта АРМ.
 // Используется во всех SQL-запросах (SELECT списка, SELECT одной записи,
 // INSERT, UPDATE), чтобы слои никогда не расходились по составу полей.
-const workstationColumns = "id, inventory_number, serial_number, seal_numbers, monitor_count, employee_id, address_id, is_vacant, replacement_done, replacement_date, replacement_letter, created_at"
+const workstationColumns = "inventory_number, serial_number, seal_numbers, monitor_count, employee_id, address_id, is_vacant, replacement_done, replacement_date, replacement_letter"
 
-// workstationListSelect — единый SELECT для списка и одной записи:
-// колонки контракта плюс employee full_name, street, building (JOIN уже есть).
-const workstationListSelect = `SELECT w.id, w.inventory_number, w.serial_number, w.seal_numbers, w.monitor_count, w.employee_id, w.address_id, w.is_vacant, w.replacement_done, w.replacement_date, w.replacement_letter, w.created_at,
-	e.full_name AS employee_name, a.street, a.building
-	FROM reference_workstations w
+// workstationColumnsPrefixed — тот же ЕДИНЫЙ список колонок с алиасом таблицы w
+// (для SELECT списка/фильтров и SELECT одной записи в edit-form).
+var workstationColumnsPrefixed = "w.id, w." + strings.ReplaceAll(workstationColumns, ", ", ", w.") + ", w.created_at"
+
+// workstationJoins — единые JOIN для списка, фильтров и одной записи.
+const workstationJoins = `FROM reference_workstations w
 	LEFT JOIN reference_employees e ON w.employee_id = e.id
 	LEFT JOIN reference_addresses a ON w.address_id = a.id`
+
+// workstationListSelect — единый SELECT для списка и одной записи:
+// ВСЕ колонки контракта плюс employee full_name, street, building (JOIN уже есть).
+var workstationListSelect = "SELECT " + workstationColumnsPrefixed + ",\n" +
+	"	e.full_name AS employee_name, a.street, a.building, a.cabinet, a.corridor, a.service_room, a.floor, a.garage_number\n" +
+	"	" + workstationJoins
 
 // ==================== СЕРВЕРНАЯ ВАЛИДАЦИЯ (единая для POST и PUT) ==========
 
@@ -143,63 +150,83 @@ func sqlNullIfEmpty(value string) string {
 	return "?"
 }
 
-// appendArg добавляет аргумент к списку только если для него выделен плейсхолдер.
-func appendArg(args *[]string, placeholder string, value string) {
-	if placeholder == "?" {
-		*args = append(*args, value)
-	}
-}
-
-// execWorkstationInsert выполняет INSERT по единому списку колонок контракта.
-// Плейсхолдеры во всех запросах одинаковы; employee/replacement могут быть NULL.
+// execWorkstationInsert выполняет INSERT по ЕДИНОМУ списку колонок контракта
+// (workstationColumns). Пустые employee_id/replacement_date/replacement_letter
+// записываются как литерал NULL, остальные значения — только плейсхолдеры "?".
 func execWorkstationInsert(req *IslandWorkstationRequest) error {
-	empPH := sqlNullIfEmpty(req.EmployeeID)
-	datePH := sqlNullIfEmpty(req.ReplacementDate)
-	letterPH := sqlNullIfEmpty(req.ReplacementLetter)
-
-	var args []string
-	appendArg(&args, empPH, req.EmployeeID)
-	appendArg(&args, datePH, req.ReplacementDate)
-	appendArg(&args, letterPH, req.ReplacementLetter)
-
+	cols := workstationColumns
+	placeholders, args := buildValueTuples(req)
 	return execSafe(
-		fmt.Sprintf(`INSERT INTO reference_workstations (inventory_number, serial_number, seal_numbers, monitor_count, employee_id, address_id, is_vacant, replacement_done, replacement_date, replacement_letter)
-VALUES (?, ?, ?, ?, %s, ?, ?, ?, %s, %s)`, empPH, datePH, letterPH),
-		toInterfaces(req.InventoryNumber, req.SerialNumber, req.SealNumbers, req.MonitorCount, args, req.AddressID, req.IsVacant, req.ReplacementDone)...,
+		fmt.Sprintf("INSERT INTO reference_workstations (%s) VALUES (%s)", cols, placeholders),
+		args...,
 	)
 }
 
-// execWorkstationUpdate выполняет UPDATE по единому списку колонок контракта.
+// execWorkstationUpdate выполняет UPDATE по ЕДИНОМУ списку колонок контракта
+// (workstationColumns): SET inventory_number = ?, ..., replacement_letter = ?
+// либо NULL для пустых необязательных полей.
 func execWorkstationUpdate(req *IslandWorkstationRequest, id int) error {
-	empPH := sqlNullIfEmpty(req.EmployeeID)
-	datePH := sqlNullIfEmpty(req.ReplacementDate)
-	letterPH := sqlNullIfEmpty(req.ReplacementLetter)
-
-	var args []string
-	appendArg(&args, empPH, req.EmployeeID)
-	appendArg(&args, datePH, req.ReplacementDate)
-	appendArg(&args, letterPH, req.ReplacementLetter)
-
+	setParts, args := buildSetClauses(req)
+	args = append(args, id)
 	return execSafe(
-		fmt.Sprintf(`UPDATE reference_workstations SET inventory_number = ?, serial_number = ?, seal_numbers = ?, monitor_count = ?, employee_id = %s, address_id = ?, is_vacant = ?, replacement_done = ?, replacement_date = %s, replacement_letter = %s WHERE id = ?`, empPH, datePH, letterPH),
-		toInterfaces(req.InventoryNumber, req.SerialNumber, req.SealNumbers, req.MonitorCount, args, req.AddressID, req.IsVacant, req.ReplacementDone, id)...,
+		"UPDATE reference_workstations SET "+strings.Join(setParts, ", ")+" WHERE id = ?",
+		args...,
 	)
 }
 
-// toInterfaces собирает плоский список interface{} из строк и подсписков.
-func toInterfaces(parts ...interface{}) []interface{} {
+// buildValueTuples возвращает кортеж значений для INSERT и плоский список
+// аргументов в том же порядке, что и workstationColumns.
+func buildValueTuples(req *IslandWorkstationRequest) (string, []interface{}) {
+	values := workstationColumnValues(req)
+	tuple := make([]string, len(values))
+	for i, v := range values {
+		tuple[i] = v.placeholder
+	}
+	return strings.Join(tuple, ", "), valuesArgs(values)
+}
+
+// buildSetClauses возвращает части "колонка = ?" (или "колонка = NULL") для
+// UPDATE в порядке workstationColumns.
+func buildSetClauses(req *IslandWorkstationRequest) ([]string, []interface{}) {
+	values := workstationColumnValues(req)
+	parts := make([]string, len(values))
+	for i, v := range values {
+		parts[i] = v.column + " = " + v.placeholder
+	}
+	return parts, valuesArgs(values)
+}
+
+type columnValue struct {
+	column      string
+	placeholder string // "?" или "NULL"
+	value       string
+}
+
+func valuesArgs(values []columnValue) []interface{} {
 	var out []interface{}
-	for _, p := range parts {
-		switch v := p.(type) {
-		case []string:
-			for _, s := range v {
-				out = append(out, s)
-			}
-		default:
-			out = append(out, p)
+	for _, v := range values {
+		if v.placeholder == "?" {
+			out = append(out, v.value)
 		}
 	}
 	return out
+}
+
+// workstationColumnValues — ЕДИНАЯ таблица «колонка → значение» контракта АРМ,
+// используемая и для INSERT, и для UPDATE (гарантия одного списка колонок).
+func workstationColumnValues(req *IslandWorkstationRequest) []columnValue {
+	return []columnValue{
+		{"inventory_number", "?", req.InventoryNumber},
+		{"serial_number", "?", req.SerialNumber},
+		{"seal_numbers", "?", req.SealNumbers},
+		{"monitor_count", "?", req.MonitorCount},
+		{"employee_id", sqlNullIfEmpty(req.EmployeeID), req.EmployeeID},
+		{"address_id", "?", req.AddressID},
+		{"is_vacant", "?", req.IsVacant},
+		{"replacement_done", "?", req.ReplacementDone},
+		{"replacement_date", sqlNullIfEmpty(req.ReplacementDate), req.ReplacementDate},
+		{"replacement_letter", sqlNullIfEmpty(req.ReplacementLetter), req.ReplacementLetter},
+	}
 }
 
 // workstationExists проверяет существование записи АРМ по ID.

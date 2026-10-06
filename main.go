@@ -284,18 +284,91 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			data["employees"] = rows
 		}
-	case "workstations":
-		rows, err := QueryDB(`SELECT w.id, w.inventory_number, w.serial_number, w.seal_numbers, w.monitor_count, w.employee_id, w.replacement_done, w.replacement_date, w.replacement_letter, w.address_id, 
-		                     e.full_name as employee_name, a.street, a.building 
-		                     FROM reference_workstations w
-		                     LEFT JOIN reference_employees e ON w.employee_id = e.id
-		                     LEFT JOIN reference_addresses a ON w.address_id = a.id
-		                     ORDER BY a.street, a.building, w.inventory_number`)
-		if err != nil {
-			dbError = err
-		} else {
-			data["workstations"] = rows
-		}
+case "workstations":
+// Фаза 2 (AK-2.2.0): серверная фильтрация SSR-таблицы АРМ по образцу раздела «Адреса».
+// WHERE собирается только параметризованными условиями (без конкатенации значений).
+search := strings.TrimSpace(r.URL.Query().Get("search"))
+vacant := strings.TrimSpace(r.URL.Query().Get("vacant"))
+addressID := strings.TrimSpace(r.URL.Query().Get("address_id"))
+
+// Единый SELECT: ВСЕ колонки контракта + employee full_name, street, building (JOIN уже есть)
+query := workstationListSelect
+
+var conditions []string
+var args []string
+
+if search != "" {
+// LIKE по инвентарному и серийному номерам
+conditions = append(conditions, "(w.inventory_number LIKE ? OR w.serial_number LIKE ?)")
+like := "%" + search + "%"
+args = append(args, like, like)
+}
+
+if vacant == "1" || vacant == "0" {
+// CASE: BOOLEAN-колонка может содержать 0/1/'true'/'false' — приводим к '1'/'0'
+conditions = append(conditions, "CASE WHEN CAST(w.is_vacant AS TEXT) IN ('1','true','True') THEN '1' ELSE '0' END = ?")
+args = append(args, vacant)
+}
+
+if addressID != "" {
+conditions = append(conditions, "w.address_id = ?")
+args = append(args, addressID)
+}
+
+if len(conditions) > 0 {
+query += " WHERE " + strings.Join(conditions, " AND ")
+}
+query += " ORDER BY a.street, a.building, w.inventory_number"
+
+rows, err := QueryDB(query, args...)
+if err != nil {
+dbError = err
+} else {
+// Нормализация булевых полей в "1"/"0" и сборка строки адреса для SSR-таблицы
+for i := range rows {
+switch rows[i]["is_vacant"] {
+case "1", "true", "True":
+rows[i]["is_vacant"] = "1"
+default:
+rows[i]["is_vacant"] = "0"
+}
+switch rows[i]["replacement_done"] {
+case "1", "true", "True":
+rows[i]["replacement_done"] = "1"
+default:
+rows[i]["replacement_done"] = "0"
+}
+rows[i]["full_address"] = FormatFullAddress(rows[i]["street"], rows[i]["building"],
+rows[i]["cabinet"], rows[i]["corridor"], rows[i]["service_room"], rows[i]["garage_number"], rows[i]["floor"])
+}
+// Ключ "Workstations" с ЗАГЛАВНОЙ буквы — шаблон итерирует .Workstations
+data["Workstations"] = rows
+data["Search"] = search
+data["Vacant"] = vacant
+data["AddressId"] = addressID
+
+// Список адресов для селекта фильтра
+addresses, err := QueryDB(`SELECT id, street, building, cabinet, corridor, service_room, garage_number, floor FROM reference_addresses ORDER BY street, building`)
+if err == nil {
+for i := range addresses {
+addresses[i]["full_address"] = FormatFullAddress(addresses[i]["street"], addresses[i]["building"],
+addresses[i]["cabinet"], addresses[i]["corridor"], addresses[i]["service_room"], addresses[i]["garage_number"], addresses[i]["floor"])
+}
+data["AddressesForFilter"] = addresses
+} else {
+logDiagnostic("Ошибка загрузки адресов для фильтра АРМ: " + err.Error())
+data["AddressesForFilter"] = []map[string]string{}
+}
+
+// Список сотрудников для селектов Vue-островов формы АРМ
+emps, err := QueryDB(`SELECT id, full_name FROM reference_employees ORDER BY full_name`)
+if err == nil {
+data["EmployeesForIsland"] = emps
+} else {
+logDiagnostic("Ошибка загрузки сотрудников для островов АРМ: " + err.Error())
+data["EmployeesForIsland"] = []map[string]string{}
+}
+}
 	case "hosts":
 		rows, err := QueryDB(`SELECT h.id, h.ip, h.ssh_port, h.address_id, h.employee_id,
 		                     e.full_name as employee_name, a.street, a.building
@@ -2512,6 +2585,8 @@ func setupRoutes() {
 	// Island-маршруты раздела «Адреса» (Фаза 1, AK-2.2.0): создание/обновление/удаление
 	// через Vue-острова + HTML-фрагмент формы редактирования
 	registerAddressIslandRoutes(authMiddleware)
+	// Island-маршруты раздела «АРМ» (Фаза 2, AK-2.2.0): по образцу раздела «Адреса»
+	registerWorkstationIslandRoutes(authMiddleware)
 	http.HandleFunc("/api/reference/employees", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
 	http.HandleFunc("/api/reference/employees/", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
 	http.HandleFunc("/api/reference/workstations", recoverMiddleware(authMiddleware(apiReferenceWorkstationsHandler)))
