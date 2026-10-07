@@ -24,21 +24,22 @@
   в islands.js; универсальный парсинг data-initial-data (PR #25).
 - RECOMMENDATIONS Critical: №2 RETURNING id, №3 quoted secrets, №4 PRAGMA
   foreign_keys (PR #28). №1 (бизнес-UNIQUE адресов): NULL-семантика bindArgs в PR #28,
-  снятие самого UNIQUE-индекса — в очереди (Унификация-1).
+  снятие самого UNIQUE-индекса — закрыто Унификацией-1 (e7d7ce7).
+- Унификация-1 (e7d7ce7): правило ключа применено к адресам (миграция 0.0.6,
+  идемпотентная, проверена на легаси-БД), дубль-механизмы удалены
+  (isAddressDuplicate, normalizeUniqueEmptyStringsToNULL, addressFloorSQLArg),
+  все списки справочников сортируются по id.
 - Аудит Alpine: «Адреса» и «АРМ» мигрированы; сломанность остальных Alpine-разделов
   подтверждена сопоставлением app.js с API (employees: fio/position vs full_name;
   tasks: viewTask/startTask/stopTask не определены).
 
 ## 3. Активная очередь сессий
-1. Унификация-1: миграция схемы 0.0.5→0.0.6 (reference_addresses без бизнес-UNIQUE
-   пересозданием таблицы), удаление isAddressDuplicate и normalizeUniqueEmptyStringsToNULL,
-   ORDER BY id во всех case contentSectionHandler.
-2. Порт-employees: SSR + Vue-острова по образцу адресов (контракт full_name, short_name,
+1. Порт-employees: SSR + Vue-острова по образцу адресов (контракт full_name, short_name,
    phone_city, phone_internal, address_id); удалить employeesPage из app.js.
-3. Порт-hosts: контракт ip, ssh_port, enabled, address_id, employee_id; UNIQUE ip сохраняется.
-4. Порт-трио: network-equipment, network-mfps, ip-phones; UNIQUE ip сохраняется;
+2. Порт-hosts: контракт ip, ssh_port, enabled, address_id, employee_id; UNIQUE ip сохраняется.
+3. Порт-трио: network-equipment, network-mfps, ip-phones; UNIQUE ip сохраняется;
    денормализация employee_full_name в ip-phones — см. беклог.
-5. Демонтаж Alpine Фазы A-D (раздел 5).
+4. Демонтаж Alpine Фазы A-D (раздел 5).
 
 ## 4. Беклог
 - Сортировка по клику на столбец (серверный ORDER BY + параметр запроса).
