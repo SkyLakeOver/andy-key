@@ -1384,6 +1384,13 @@ func InitDB() error {
 			return fmt.Errorf("ошибка инициализации БД: %v", err)
 		}
 	}
+
+	// RECOMMENDATIONS.md №4 (Critical): PRAGMA foreign_keys=ON — включает FK-связи
+	// и ON DELETE CASCADE. SQLite по умолчанию держит foreign_keys=OFF на уровне
+	// соединения; каждая операция здесь — новый процесс sqlite3, поэтому pragma
+	// выполняется отдельным соединением через helper ниже (в том же процессе, что
+	// и рабочие запросы).
+	enableForeignKeysPragma()
 	
 	// КРИТИЧЕСКИ ВАЖНО: Проверяем и обновляем версию схемы ДО инициализации футера
 	// Это гарантирует, что таблица platform_settings существует
@@ -1555,7 +1562,19 @@ func bindArgs(query string, args []string) string {
 	for i := 0; i < len(query); i++ {
 		c := query[i]
 		if c == '?' && argIdx < len(args) {
-			sb.WriteString("'" + strings.ReplaceAll(args[argIdx], "'", "''") + "'")
+			// RECOMMENDATIONS.md №1 (Critical): Пустые строки → SQL NULL, т.к.
+			// UNIQUE-индекс считает NULL различными, а '' — равными. Это устраняет
+			// ложные UNIQUE-коллизии для гаражей/складов/серверных на одном адресе
+			// (колонки cabinet/corridor/service_room не относятся к выбранному типу).
+			// Ветка floor в addresses_islands.go (buildAddressSQL) не тронута — она
+			// уже подставляет NULL корректно.
+			// СТОЯЩЕЕ ПРАВИЛО: строка "NULL" никогда не передаётся аргументом —
+			// здесь она заменяется на ГОЛЫЙ SQL-литерал NULL (без кавычек).
+			if args[argIdx] == "" {
+				sb.WriteString("NULL")
+			} else {
+				sb.WriteString("'" + strings.ReplaceAll(args[argIdx], "'", "''") + "'")
+			}
 			argIdx++
 		} else {
 			sb.WriteByte(c)
@@ -1640,6 +1659,77 @@ func ExecDB(query string, args ...string) error {
 		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+// execWithForeignKeys выполняет SQL в ОДНОМ процессе sqlite3 с предварительно
+// включённым PRAGMA foreign_keys=ON (RECOMMENDATIONS.md №4).
+// Ключевой момент: каждая операция в этом проекте — новый процесс sqlite3
+// (spawn на запрос), а pragma foreign_keys живёт только в рамках соединения.
+// Поэтому ON передаётся через -cmd перед основным запросом — иначе FK-связи
+// и ON DELETE CASCADE молча не работают ни в одном рабочем соединении.
+func execWithForeignKeys(sql string) error {
+	cmd := exec.Command("sqlite3", "-cmd", "PRAGMA foreign_keys=ON;", DB_PATH, sql)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%v: %s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+// ExecDBWithForeignKeys — параметризованный ExecDB (bindArgs) с включённым в том
+// же соединении PRAGMA foreign_keys=ON (RECOMMENDATIONS.md №4). Используется для
+// всех INSERT/UPDATE/DELETE бизнес-операций: FK-проверки и ON DELETE CASCADE
+// действуют в том самом процессе sqlite3, где выполняется запрос.
+// СТОЯЩЕЕ ПРАВИЛО: строка "NULL" никогда не передаётся аргументом — bindArgs
+// заменяет пустые строки на голый SQL-литерал NULL.
+func ExecDBWithForeignKeys(query string, args ...string) error {
+	return execWithForeignKeys(bindArgs(query, args))
+}
+
+// enableForeignKeysPragma — диагностика из InitDB: проверяет, что pragma
+// foreign_keys применим к базе (выполняется в том же соединении, что и сам pragma).
+// RECOMMENDATIONS.md №4: PRAGMA foreign_keys=ON включает FK-связи и ON DELETE CASCADE.
+func enableForeignKeysPragma() {
+	cmd := exec.Command("sqlite3", "-cmd", "PRAGMA foreign_keys=ON;", DB_PATH, "PRAGMA foreign_keys;")
+	output, err := cmd.CombinedOutput()
+	if err != nil || strings.TrimSpace(string(output)) != "1" {
+		logDiagnostic("Не удалось включить foreign_keys: " + strings.TrimSpace(string(output)))
+	} else {
+		logDiagnostic("PRAGMA foreign_keys=ON: FK-связи включены (значения '1' подтверждено в том же соединении)")
+	}
+}
+
+// countRows executes a COUNT(*) query in its own connection and returns the row count.
+func countRows(table, whereSQL string) int {
+	rows, err := QueryDB("SELECT COUNT(*) AS cnt FROM " + table + " WHERE " + whereSQL)
+	if err != nil || len(rows) == 0 {
+		return 0
+	}
+	n, _ := strconv.Atoi(rows[0]["cnt"])
+	return n
+}
+
+// deleteRowWithChanges удаляет строку с проверкой факта удаления (RECOMMENDATIONS.md
+// №4/№10): DELETE выполняется в одном соединении с PRAGMA foreign_keys=ON, затем
+// changes() спрашивается в том же процессе sqlite3. Возвращает количество удалённых
+// строк; ошибка — если запрос упал (например, нарушение FK зависимыми записями).
+func deleteRowWithChanges(table, idCol string, id int) (int, error) {
+	sqlStr := fmt.Sprintf(
+		"DELETE FROM %s WHERE %s = %d; SELECT changes();",
+		table, idCol, id,
+	)
+	cmd := exec.Command("sqlite3", "-cmd", "PRAGMA foreign_keys=ON;", DB_PATH, sqlStr)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("%v: %s", err, strings.TrimSpace(string(output)))
+	}
+	out := strings.TrimSpace(string(output))
+	// stdout содержит число изменённых строк (0 — запись не найдена)
+	n, convErr := strconv.Atoi(out)
+	if convErr != nil {
+		return 0, fmt.Errorf("неожиданный вывод changes(): %q", out)
+	}
+	return n, nil
 }
 
 func GetCrypto() *Crypto {

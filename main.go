@@ -59,7 +59,9 @@ func querySafe(query string, args ...interface{}) ([]map[string]string, error) {
 	return QueryDB(query, strArgs...)
 }
 
-// execSafe выполняет параметризованный SQL-запрос без возврата данных
+// execSafe выполняет параметризованный SQL-запрос без возврата данных.
+// ВАЖНО (RECOMMENDATIONS.md №1, Critical): пустая строка "" в bindArgs
+// заменяется на голый SQL-литерал NULL — см. db.go bindArgs.
 func execSafe(query string, args ...interface{}) error {
 	// Конвертируем interface{} args в string args для ExecDB
 	strArgs := make([]string, len(args))
@@ -77,7 +79,37 @@ func execSafe(query string, args ...interface{}) error {
 			strArgs[i] = fmt.Sprintf("%v", v)
 		}
 	}
-	return ExecDB(query, strArgs...)
+	// RECOMMENDATIONS.md №4 (Critical): PRAGMA foreign_keys=ON — включает FK-связи
+	// и ON DELETE CASCADE в том же соединении sqlite3, где выполняется запрос.
+	// Все бизнес-операции (INSERT/UPDATE/DELETE справочников, задач, credentials)
+	// идут через execSafe → ExecDBWithForeignKeys.
+	return ExecDBWithForeignKeys(query, strArgs...)
+}
+
+// handleDeleteResult — общая обработка результата deleteRowWithChanges
+// (RECOMMENDATIONS.md №4/№10, Critical):
+//   - ошибка FOREIGN KEY constraint → 400 «Нельзя удалить: запись используется в других справочниках»;
+//   - changes() == 0 → 404 {"error":"Запись не найдена"};
+//   - иная ошибка БД → 500.
+// Возвращает true, если ответ уже отправлен (handler должен сделать return).
+func handleDeleteResult(w http.ResponseWriter, changes int, err error) bool {
+	if err != nil {
+		if strings.Contains(err.Error(), "FOREIGN KEY constraint") {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Нельзя удалить: запись используется в других справочниках"})
+			return true
+		}
+		log.Printf("Ошибка удаления записи: %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
+		return true
+	}
+	if changes == 0 {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Запись не найдена"})
+		return true
+	}
+	return false
 }
 
 // querySingleInt выполняет запрос и возвращает одно целое значение
@@ -798,9 +830,23 @@ func apiReferenceAddressesHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err := execSafe("DELETE FROM reference_addresses WHERE id = ?", id); err != nil {
+		// RECOMMENDATIONS.md №4/№10 (Critical): deleteRowWithChanges выполняет
+		// DELETE + SELECT changes() в ОДНОМ процессе sqlite3 с PRAGMA foreign_keys=ON.
+		// changes()==0 → записи нет → 404; ошибка FK → 400 (запись используется).
+		changes, err := deleteRowWithChanges("reference_addresses", "id", id)
+		if err != nil {
+			if strings.Contains(err.Error(), "FOREIGN KEY constraint") {
+				w.WriteHeader(http.StatusBadRequest)
+				json.NewEncoder(w).Encode(map[string]string{"error": "Нельзя удалить адрес: он используется в справочниках"})
+				return
+			}
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
+			return
+		}
+		if changes == 0 {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Адрес не найден"})
 			return
 		}
 
@@ -1892,6 +1938,11 @@ func apiCredentialsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		query := "INSERT INTO credentials (username, password) VALUES (?, ?)"
+		// RECOMMENDATIONS.md №3 (Critical): Пароли через bindArgs: экранирование кавычек ' → ''.
+		// encryptedPassword передаётся параметром (?) через execSafe → bindArgs, который
+		// оборачивает значение в одинарные кавычки; прямой конкатенации шифротекста в SQL нет.
+		// Иначе hex/base64 из одних цифр SQLite приводил к numeric-типу («голое число»)
+		// и дешифровка при чтении падала.
 		if err := execSafe(query, req.Username, encryptedPassword); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
@@ -1926,6 +1977,8 @@ func apiCredentialsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		query := "UPDATE credentials SET username = ? WHERE id = ?"
+		// RECOMMENDATIONS.md №3 (Critical): Пароли через bindArgs: экранирование кавычек ' → ''.
+		// В PUT пароль не перезаписывается; username идёт параметром (?) через execSafe → bindArgs.
 		if err := execSafe(query, req.Username, id); err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка базы данных"})
@@ -2186,24 +2239,26 @@ func apiTasksHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Используем параметризованный запрос для безопасной вставки
-		if err := execSafe(
-			"INSERT INTO tasks (name, description, status) VALUES (?, ?, 'pending')",
+		// RECOMMENDATIONS.md №2 (Critical): RETURNING id — last_insert_rowid() живёт
+		// только в рамках одного соединения sqlite3, а каждая операция здесь — новый
+		// процесс sqlite3 (spawn на запрос), поэтому отдельный SELECT last_insert_rowid()
+		// всегда возвращал 0 и привязки task_hosts/task_bash_commands терялись.
+		// INSERT + RETURNING id выполняются одним запросом = одно соединение.
+		rows, err := QueryDB(
+			"INSERT INTO tasks (name, description, status) VALUES (?, ?, 'pending') RETURNING id",
 			req.Name, req.Description,
-		); err != nil {
+		)
+		if err != nil || len(rows) == 0 {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка создания задачи"})
 			return
 		}
-
-		// Получаем ID новой задачи
-		rows, err := QueryDB("SELECT last_insert_rowid() as id")
-		if err != nil || len(rows) == 0 {
+		taskID, _ := strconv.Atoi(rows[0]["id"])
+		if taskID <= 0 {
 			w.WriteHeader(http.StatusInternalServerError)
 			json.NewEncoder(w).Encode(map[string]string{"error": "Ошибка получения ID задачи"})
 			return
 		}
-		taskID, _ := strconv.Atoi(rows[0]["id"])
 
 		// Добавляем хосты в задачу
 		for _, hostID := range req.HostIDs {
