@@ -21,7 +21,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 // ==================== КОНТРАКТ ДАННЫХ ====================
@@ -150,42 +149,19 @@ func idFromPath(path, prefix string) (int, error) {
 	return id, nil
 }
 
-// addressFloorSQLArg возвращает значение для колонки floor: строку этажа либо NULL.
-func addressFloorSQLArg(floor string) string {
-	if floor == "" {
-		return "NULL"
-	}
-	return floor
-}
-
-// addressUniqueColumns — ЕДИНЫЙ список UNIQUE-колонок контракта адреса
-// (включая floor, который входит в ветку сборки SQL, но НЕ входит в индекс
-// UNIQUE(street, building, cabinet, corridor, service_room)).
-// Порядок задаётся здесь один раз и используется и для INSERT, и для UPDATE,
-// чтобы списки колонок никогда не дублировались и не расходились.
-var addressUniqueColumns = []string{"cabinet", "corridor", "service_room"}
-
-// buildAddressSQL собирает SQL по одному канону колонок addressUniqueColumns + floor
-// плюс полные колонки типа (service_room_type, garage_number).
+// buildAddressSQL — Унификация-1 (TASKS.md раздел 3, пункт 1): ОДИН запрос по
+// полному контракту колонок адреса. Пустые значения передаются через плейсхолдеры
+// как пустые строки — bindArgs сам подставляет голый SQL-литерал NULL
+// (СТОЯЩЕЕ ПРАВИЛО: строка "NULL" никогда не передаётся аргументом).
 // operation: "insert" | "update".
-// Пустые значения UNIQUE-колонок (и пустой этаж) подставляются в SQL ГОЛЫМ
-// SQL-литералом NULL (без кавычек), аргументы исключаются из списка; непустые —
-// прежним путём через плейсхолдеры ?. Причина: SQLite считает NULL различными,
-// а пустые строки — равными, поэтому два гаража (или безымянные служебные разных
-// подтипов) на одном адресе коллидируют по UNIQUE(street, building, cabinet,
-// corridor, service_room), если неиспользуемые колонки хранить как ''.
-// ВАЖНО (стоящее правило): строка "NULL" никогда не передаётся аргументом —
-// только как литерал внутри собранного SQL.
 func buildAddressSQL(operation string, req *IslandAddressRequest) (string, []interface{}) {
-	cols := make([]string, 0, len(addressUniqueColumns)+3)
-	cols = append(cols, addressUniqueColumns...)
-	cols = append(cols, "floor", "service_room_type", "garage_number")
+	cols := []string{"cabinet", "corridor", "service_room", "floor", "service_room_type", "garage_number"}
 
 	values := map[string]string{
 		"cabinet":           req.Cabinet,
 		"corridor":          req.Corridor,
 		"service_room":      req.ServiceRoom,
-		"floor":             addressFloorSQLArg(req.Floor),
+		"floor":             req.Floor,
 		"service_room_type": req.ServiceRoomType,
 		"garage_number":     req.GarageNumber,
 	}
@@ -193,14 +169,8 @@ func buildAddressSQL(operation string, req *IslandAddressRequest) (string, []int
 	args := make([]interface{}, 0, len(cols))
 	exprs := make([]string, 0, len(cols)) // VALUES-выражения (insert) или col = expr (update)
 	for _, c := range cols {
-		v := values[c]
-		if v == "" || v == "NULL" {
-			// голодный SQL-литерал NULL, аргумент НЕ добавляется
-			exprs = append(exprs, "NULL")
-		} else {
-			exprs = append(exprs, "?")
-			args = append(args, v)
-		}
+		exprs = append(exprs, "?")
+		args = append(args, values[c])
 	}
 
 	var sb strings.Builder
@@ -213,7 +183,7 @@ func buildAddressSQL(operation string, req *IslandAddressRequest) (string, []int
 		return sb.String(), args
 	}
 
-	// operation == "update": SET-пары вида col = NULL / col = ?
+	// operation == "update": SET-пары вида col = ?
 	sets := make([]string, 0, len(cols))
 	for i, c := range cols {
 		sets = append(sets, c+" = "+exprs[i])
@@ -224,40 +194,18 @@ func buildAddressSQL(operation string, req *IslandAddressRequest) (string, []int
 	return sb.String(), args
 }
 
-// normalizeUniqueEmptyStringsToNULL — разовая нормализация легаси-строк: старые
-// записи могли хранить неиспользуемые колонки как '' (пустые строки равны в
-// UNIQUE, NULL — различны). При первом обращении к островам адресов '' в
-// cabinet/corridor/service_room приводятся к NULL (семантика контракта Фазы 1).
-// Схему (UNIQUE-индексы) НЕ трогаем — дефект схемы является отдельной задачей.
-var addressNormalizeReady sync.Once
-
-func normalizeUniqueEmptyStringsToNULL() {
-	addressNormalizeReady.Do(func() {
-		for _, col := range []string{"cabinet", "corridor", "service_room"} {
-			if err := execSafe("UPDATE reference_addresses SET " + col + " = NULL WHERE " + col + " = ''"); err != nil {
-				log.Printf("Нормализация '' → NULL в %s не выполнена: %v", col, err)
-			}
-		}
-	})
-}
-
-// execAddressInsert выполняет INSERT по единому канону колонок контракта.
-// Пустые cabinet/corridor/service_room и пустой этаж вставляются как голодные
-// SQL-литералы NULL (см. buildAddressSQL); непустые — через плейсхолдеры.
-// service_room_type/garage_number — обычные данные, всегда через плейсхолдеры.
+// execAddressInsert выполняет INSERT по единому канону колонок контракта
+// (Унификация-1: без предпроверки дублей — правило ключа, уникален только id).
 func execAddressInsert(req *IslandAddressRequest) error {
-	normalizeUniqueEmptyStringsToNULL()
 	sqlStr, tail := buildAddressSQL("insert", req)
 	all := []interface{}{req.Street, req.Building, req.Type}
 	all = append(all, tail...)
 	return execSafe(sqlStr, all...)
 }
 
-// execAddressUpdate выполняет UPDATE по единому канону колонок контракта.
-// Пустые cabinet/corridor/service_room и пустой этаж обновляются на голодные
-// SQL-литералы NULL (см. buildAddressSQL); непустые — через плейсхолдеры.
+// execAddressUpdate выполняет UPDATE по единому канону колонок контракта
+// (Унификация-1: без предпроверки дублей — правило ключа, уникален только id).
 func execAddressUpdate(req *IslandAddressRequest, id int) error {
-	normalizeUniqueEmptyStringsToNULL()
 	sqlStr, tail := buildAddressSQL("update", req)
 	all := []interface{}{req.Street, req.Building, req.Type}
 	all = append(all, tail...)
@@ -302,58 +250,6 @@ func isUniqueViolation(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint")
 }
 
-// isAddressDuplicate — серверная предпроверка дублей адреса.
-// Предпроверка дублей: UNIQUE-индекс не ловит дубли с NULL-колонками
-// (SQLite считает NULL различными), поэтому повтор кабинета/коридора с теми же
-// пустыми неиспользуемыми полями нужно отлавливать до вставки.
-// Сравнение по всем колонкам контракта: непустые значения сопоставляются через
-// плейсхолдеры ?, пустые — через IS NULL (голый SQL-литерал NULL, НЕ аргумент).
-// excludeID > 0 (для UPDATE) исключает саму редактируемую запись.
-func isAddressDuplicate(req *IslandAddressRequest, excludeID int) bool {
-	conds := []string{"street = ?", "building = ?", "type = ?"}
-	args := []interface{}{req.Street, req.Building, req.Type}
-
-	pairs := []struct {
-		col    string
-		value  string
-	}{
-		{"cabinet", req.Cabinet},
-		{"corridor", req.Corridor},
-		{"service_room", req.ServiceRoom},
-		{"service_room_type", req.ServiceRoomType},
-		{"garage_number", req.GarageNumber},
-	}
-	for _, p := range pairs {
-		if p.value != "" {
-			conds = append(conds, p.col+" = ?")
-			args = append(args, p.value)
-		} else {
-			conds = append(conds, p.col+" IS NULL")
-		}
-	}
-
-	// этаж: CHECK-колонка, пустой хранится как NULL (см. addressFloorSQLArg)
-	if f := addressFloorSQLArg(req.Floor); f == "NULL" {
-		conds = append(conds, "floor IS NULL")
-	} else {
-		conds = append(conds, "floor = ?")
-		args = append(args, f)
-	}
-
-	if excludeID > 0 {
-		conds = append(conds, "id != ?")
-		args = append(args, excludeID)
-	}
-
-	query := "SELECT id FROM reference_addresses WHERE " + strings.Join(conds, " AND ")
-	rows, err := querySafe(query, args...)
-	if err != nil {
-		log.Printf("Предпроверка дублей адреса не выполнена: %v", err)
-		return false
-	}
-	return len(rows) >= 1
-}
-
 // decodeIslandAddressRequest декодирует JSON-тело запроса острова.
 func decodeIslandAddressRequest(w http.ResponseWriter, r *http.Request) (IslandAddressRequest, bool) {
 	var req IslandAddressRequest
@@ -385,12 +281,8 @@ func apiAddressIslandCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Предпроверка дублей: UNIQUE-индекс не ловит дубли с NULL-колонками.
-	if isAddressDuplicate(&req, 0) {
-		writeIslandJSONError(w, http.StatusBadRequest, "Такой адрес уже существует")
-		return
-	}
-
+	// Унификация-1 (правило ключа): предпроверка дублей удалена —
+	// бизнес-дубли разрешены, уникален только id.
 	if err := execAddressInsert(&req); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint") {
 			writeIslandJSONError(w, http.StatusBadRequest, "Такой адрес уже существует")
@@ -426,12 +318,8 @@ func apiAddressIslandItemHandler(w http.ResponseWriter, r *http.Request) {
 		if !ok {
 			return
 		}
-		// Предпроверка дублей: UNIQUE-индекс не ловит дубли с NULL-колонками.
-		// excludeID = id — смена адреса на собственную запись не считается дублем.
-		if isAddressDuplicate(&req, id) {
-			writeIslandJSONError(w, http.StatusBadRequest, "Такой адрес уже существует")
-			return
-		}
+		// Унификация-1 (правило ключа): предпроверка дублей удалена —
+		// бизнес-дубли разрешены, уникален только id.
 		if err := execAddressUpdate(&req, id); err != nil {
 			if strings.Contains(err.Error(), "UNIQUE constraint") {
 				writeIslandJSONError(w, http.StatusBadRequest, "Такой адрес уже существует")

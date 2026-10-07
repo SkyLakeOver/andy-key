@@ -91,6 +91,7 @@ func execSafe(query string, args ...interface{}) error {
 //   - ошибка FOREIGN KEY constraint → 400 «Нельзя удалить: запись используется в других справочниках»;
 //   - changes() == 0 → 404 {"error":"Запись не найдена"};
 //   - иная ошибка БД → 500.
+//
 // Возвращает true, если ответ уже отправлен (handler должен сделать return).
 func handleDeleteResult(w http.ResponseWriter, changes int, err error) bool {
 	if err != nil {
@@ -212,6 +213,7 @@ func indexHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // contentSectionHandler обрабатывает запросы контента для различных разделов
+// Правило ключа: сортировка списков по id (TASKS.md раздел 1)
 func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("session_token")
 	if err != nil || !CheckSession(cookie.Value) {
@@ -254,6 +256,7 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 	data := make(map[string]interface{})
 	var dbError error
 
+	// Правило ключа: сортировка списков по id (TASKS.md раздел 1).
 	switch section {
 	case "addresses":
 		// Фаза 1 (AK-2.2.0): серверная фильтрация SSR-таблицы адресов.
@@ -285,7 +288,7 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 		if len(conditions) > 0 {
 			query += " WHERE " + strings.Join(conditions, " AND ")
 		}
-		query += " ORDER BY street, building"
+		query += " ORDER BY id"
 
 		rows, err := QueryDB(query, args...)
 		if err != nil {
@@ -297,111 +300,111 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 			data["TypeFilter"] = typeFilter
 		}
 	case "employees":
-		rows, err := QueryDB(`SELECT id, full_name, short_name, phone_city, phone_internal, address_id, created_at FROM reference_employees ORDER BY full_name`)
+		rows, err := QueryDB(`SELECT id, full_name, short_name, phone_city, phone_internal, address_id, created_at FROM reference_employees ORDER BY id`)
 		if err != nil {
 			dbError = err
 		} else {
 			data["employees"] = rows
 		}
-case "workstations":
-// Фаза 2 (AK-2.2.0): серверная фильтрация SSR-таблицы АРМ по образцу раздела «Адреса».
-// WHERE собирается только параметризованными условиями (без конкатенации значений).
-search := strings.TrimSpace(r.URL.Query().Get("search"))
-vacant := strings.TrimSpace(r.URL.Query().Get("vacant"))
-addressID := strings.TrimSpace(r.URL.Query().Get("address_id"))
+	case "workstations":
+		// Фаза 2 (AK-2.2.0): серверная фильтрация SSR-таблицы АРМ по образцу раздела «Адреса».
+		// WHERE собирается только параметризованными условиями (без конкатенации значений).
+		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		vacant := strings.TrimSpace(r.URL.Query().Get("vacant"))
+		addressID := strings.TrimSpace(r.URL.Query().Get("address_id"))
 
-// Единый SELECT: ВСЕ колонки контракта + employee full_name, street, building (JOIN уже есть)
-query := workstationListSelect
+		// Единый SELECT: ВСЕ колонки контракта + employee full_name, street, building (JOIN уже есть)
+		query := workstationListSelect
 
-var conditions []string
-var args []string
+		var conditions []string
+		var args []string
 
-if search != "" {
-// LIKE по инвентарному и серийному номерам
-conditions = append(conditions, "(w.inventory_number LIKE ? OR w.serial_number LIKE ?)")
-like := "%" + search + "%"
-args = append(args, like, like)
-}
+		if search != "" {
+			// LIKE по инвентарному и серийному номерам
+			conditions = append(conditions, "(w.inventory_number LIKE ? OR w.serial_number LIKE ?)")
+			like := "%" + search + "%"
+			args = append(args, like, like)
+		}
 
-if vacant == "1" || vacant == "0" {
-// CASE: BOOLEAN-колонка может содержать 0/1/'true'/'false' — приводим к '1'/'0'
-conditions = append(conditions, "CASE WHEN CAST(w.is_vacant AS TEXT) IN ('1','true','True') THEN '1' ELSE '0' END = ?")
-args = append(args, vacant)
-}
+		if vacant == "1" || vacant == "0" {
+			// CASE: BOOLEAN-колонка может содержать 0/1/'true'/'false' — приводим к '1'/'0'
+			conditions = append(conditions, "CASE WHEN CAST(w.is_vacant AS TEXT) IN ('1','true','True') THEN '1' ELSE '0' END = ?")
+			args = append(args, vacant)
+		}
 
-if addressID != "" {
-conditions = append(conditions, "w.address_id = ?")
-args = append(args, addressID)
-}
+		if addressID != "" {
+			conditions = append(conditions, "w.address_id = ?")
+			args = append(args, addressID)
+		}
 
-if len(conditions) > 0 {
-query += " WHERE " + strings.Join(conditions, " AND ")
-}
-query += " ORDER BY a.street, a.building, w.inventory_number"
+		if len(conditions) > 0 {
+			query += " WHERE " + strings.Join(conditions, " AND ")
+		}
+		query += " ORDER BY w.id"
 
-rows, err := QueryDB(query, args...)
-if err != nil {
-dbError = err
-} else {
-// Нормализация булевых полей в "1"/"0" и сборка строки адреса для SSR-таблицы
-for i := range rows {
-switch rows[i]["is_vacant"] {
-case "1", "true", "True":
-rows[i]["is_vacant"] = "1"
-default:
-rows[i]["is_vacant"] = "0"
-}
-switch rows[i]["replacement_done"] {
-case "1", "true", "True":
-rows[i]["replacement_done"] = "1"
-default:
-rows[i]["replacement_done"] = "0"
-}
-rows[i]["full_address"] = FormatFullAddress(rows[i]["street"], rows[i]["building"],
-rows[i]["cabinet"], rows[i]["corridor"], rows[i]["service_room"], rows[i]["garage_number"], rows[i]["floor"])
-}
-// Ключ "Workstations" с ЗАГЛАВНОЙ буквы — шаблон итерирует .Workstations
-data["Workstations"] = rows
-data["Search"] = search
-data["Vacant"] = vacant
-data["AddressId"] = addressID
+		rows, err := QueryDB(query, args...)
+		if err != nil {
+			dbError = err
+		} else {
+			// Нормализация булевых полей в "1"/"0" и сборка строки адреса для SSR-таблицы
+			for i := range rows {
+				switch rows[i]["is_vacant"] {
+				case "1", "true", "True":
+					rows[i]["is_vacant"] = "1"
+				default:
+					rows[i]["is_vacant"] = "0"
+				}
+				switch rows[i]["replacement_done"] {
+				case "1", "true", "True":
+					rows[i]["replacement_done"] = "1"
+				default:
+					rows[i]["replacement_done"] = "0"
+				}
+				rows[i]["full_address"] = FormatFullAddress(rows[i]["street"], rows[i]["building"],
+					rows[i]["cabinet"], rows[i]["corridor"], rows[i]["service_room"], rows[i]["garage_number"], rows[i]["floor"])
+			}
+			// Ключ "Workstations" с ЗАГЛАВНОЙ буквы — шаблон итерирует .Workstations
+			data["Workstations"] = rows
+			data["Search"] = search
+			data["Vacant"] = vacant
+			data["AddressId"] = addressID
 
-// Список адресов для селекта фильтра
-addresses, err := QueryDB(`SELECT id, street, building, cabinet, corridor, service_room, garage_number, floor FROM reference_addresses ORDER BY street, building`)
-if err == nil {
-for i := range addresses {
-addresses[i]["full_address"] = FormatFullAddress(addresses[i]["street"], addresses[i]["building"],
-addresses[i]["cabinet"], addresses[i]["corridor"], addresses[i]["service_room"], addresses[i]["garage_number"], addresses[i]["floor"])
-}
-data["AddressesForFilter"] = addresses
-} else {
-logDiagnostic("Ошибка загрузки адресов для фильтра АРМ: " + err.Error())
-data["AddressesForFilter"] = []map[string]string{}
-}
+			// Список адресов для селекта фильтра
+			addresses, err := QueryDB(`SELECT id, street, building, cabinet, corridor, service_room, garage_number, floor FROM reference_addresses ORDER BY id`)
+			if err == nil {
+				for i := range addresses {
+					addresses[i]["full_address"] = FormatFullAddress(addresses[i]["street"], addresses[i]["building"],
+						addresses[i]["cabinet"], addresses[i]["corridor"], addresses[i]["service_room"], addresses[i]["garage_number"], addresses[i]["floor"])
+				}
+				data["AddressesForFilter"] = addresses
+			} else {
+				logDiagnostic("Ошибка загрузки адресов для фильтра АРМ: " + err.Error())
+				data["AddressesForFilter"] = []map[string]string{}
+			}
 
-// Список сотрудников для селектов Vue-островов формы АРМ
-emps, err := QueryDB(`SELECT id, full_name FROM reference_employees ORDER BY full_name`)
-if err == nil {
-data["EmployeesForIsland"] = emps
-} else {
-logDiagnostic("Ошибка загрузки сотрудников для островов АРМ: " + err.Error())
-data["EmployeesForIsland"] = []map[string]string{}
-}
-}
+			// Список сотрудников для селектов Vue-островов формы АРМ
+			emps, err := QueryDB(`SELECT id, full_name FROM reference_employees ORDER BY id`)
+			if err == nil {
+				data["EmployeesForIsland"] = emps
+			} else {
+				logDiagnostic("Ошибка загрузки сотрудников для островов АРМ: " + err.Error())
+				data["EmployeesForIsland"] = []map[string]string{}
+			}
+		}
 	case "hosts":
 		rows, err := QueryDB(`SELECT h.id, h.ip, h.ssh_port, h.address_id, h.employee_id,
 		                     e.full_name as employee_name, a.street, a.building
 		                     FROM reference_hosts h
 		                     LEFT JOIN reference_employees e ON h.employee_id = e.id
 		                     LEFT JOIN reference_addresses a ON h.address_id = a.id
-		                     ORDER BY h.ip`)
+		                     ORDER BY h.id`)
 		if err != nil {
 			dbError = err
 		} else {
 			data["hosts"] = rows
 		}
 	case "network-equipment":
-		rows, err := QueryDB(`SELECT id, name, ip, mac, model, serial_number, location, firmware, config_backup, last_check, status, address_id, created_at FROM reference_network_equipment ORDER BY name`)
+		rows, err := QueryDB(`SELECT id, name, ip, mac, model, serial_number, location, firmware, config_backup, last_check, status, address_id, created_at FROM reference_network_equipment ORDER BY id`)
 		if err != nil {
 			dbError = err
 		} else {
@@ -412,7 +415,7 @@ data["EmployeesForIsland"] = []map[string]string{}
 		                     a.street, a.building
 		                     FROM reference_network_mfps m
 		                     LEFT JOIN reference_addresses a ON m.address_id = a.id
-		                     ORDER BY m.name`)
+		                     ORDER BY m.id`)
 		if err != nil {
 			dbError = err
 		} else {
@@ -423,7 +426,7 @@ data["EmployeesForIsland"] = []map[string]string{}
 		                     a.street, a.building
 		                     FROM reference_ip_phones p
 		                     LEFT JOIN reference_addresses a ON p.address_id = a.id
-		                     ORDER BY p.name`)
+		                     ORDER BY p.id`)
 		if err != nil {
 			dbError = err
 		} else {
