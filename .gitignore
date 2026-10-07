@@ -1,1 +1,25 @@
-(empty)
+# Логи и временные файлы
+*.log
+logs/
+
+# Артефакты сборки и локальные данные
+andy-key
+andy-key.exe
+*.exe
+*.db
+*.db-journal
+*.key
+cookies.txt
+cj.txt
+tok.txt
+
+# Тестовые артефакты
+*.test
+coverage.out
+
+# ОС и редакторы
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
