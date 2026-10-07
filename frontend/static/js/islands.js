@@ -341,6 +341,241 @@ window.refreshAddressesTable = function () {
 };
 
 
+// ==================== Порт-employees: Vue-острова сотрудников ====================
+// Контракт (ВСЕ поля — строки): full_name, short_name, phone_city,
+// phone_internal, address_id. Эндпоинты: /api/reference/employees/island[/id],
+// edit-form/{id} — по образцу раздела «Адреса».
+
+const EmployeeFormMixin = {
+    data() {
+        return {
+            formData: this.emptyForm(),
+            isSubmitting: false,
+            error: ''
+        };
+    },
+    methods: {
+        emptyForm() {
+            return {
+                full_name: '',
+                short_name: '',
+                phone_city: '',
+                phone_internal: '',
+                address_id: ''
+            };
+        },
+        // Сборка payload по контракту: все поля ВСЕГДА строки
+        buildPayload() {
+            return {
+                full_name: String(this.formData.full_name || ''),
+                short_name: String(this.formData.short_name || ''),
+                phone_city: String(this.formData.phone_city || ''),
+                phone_internal: String(this.formData.phone_internal || ''),
+                address_id: String(this.formData.address_id || '')
+            };
+        },
+        readError(errText, fallback) {
+            try {
+                const j = JSON.parse(errText);
+                return j.error || j.message || errText || fallback;
+            } catch (e) {
+                return (errText && errText.trim()) ? errText.trim() : fallback;
+            }
+        }
+    }
+};
+
+// Список адресов для селектов формы сотрудника: GET /api/reference/addresses
+// (GET-ветка возвращает id + full_address; используется только при открытии
+// модалки/формы — не на каждой перерисовке таблицы).
+function loadEmployeeAddressOptions() {
+    return fetch('/api/reference/addresses')
+        .then(r => (r.ok ? r.json() : []))
+        .catch(() => []);
+}
+
+// Остров: форма добавления сотрудника
+const EmployeeForm = {
+    mixins: [EmployeeFormMixin],
+    data() {
+        return { addresses: [] };
+    },
+    created() {
+        loadEmployeeAddressOptions().then(list => { this.addresses = list || []; });
+    },
+    methods: {
+        async submitForm() {
+            this.error = '';
+            this.isSubmitting = true;
+            try {
+                const response = await fetch('/api/reference/employees/island', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.buildPayload())
+                });
+                if (!response.ok) {
+                    throw new Error(this.readError(await response.text(), 'Ошибка сохранения'));
+                }
+                this.formData = this.emptyForm();
+                window.refreshEmployeesTable();
+            } catch (err) {
+                this.error = err.message || 'Неизвестная ошибка';
+                console.error('Ошибка сохранения сотрудника:', err);
+            } finally {
+                this.isSubmitting = false;
+            }
+        }
+    },
+    template: `
+        <div class="island-form employee-form">
+            <h3>Добавить сотрудника</h3>
+
+            <div v-if="error" class="alert alert-danger">{{ error }}</div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>ФИО полностью *</label>
+                    <input type="text" v-model="formData.full_name" placeholder="Иванов Иван Иванович">
+                </div>
+                <div class="form-group">
+                    <label>ФИО кратко</label>
+                    <input type="text" v-model="formData.short_name" placeholder="Иванов И.И.">
+                </div>
+                <div class="form-group">
+                    <label>Городской телефон</label>
+                    <input type="text" v-model="formData.phone_city" placeholder="123-45-67">
+                </div>
+                <div class="form-group">
+                    <label>Внутренний телефон</label>
+                    <input type="text" v-model="formData.phone_internal" placeholder="1234">
+                </div>
+                <div class="form-group">
+                    <label>Адрес *</label>
+                    <select v-model="formData.address_id">
+                        <option value="">Выберите адрес</option>
+                        <option v-for="addr in addresses" :key="addr.id" :value="String(addr.id)">{{ addr.full_address }}</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button class="btn-primary" @click="submitForm" :disabled="isSubmitting">
+                    {{ isSubmitting ? 'Сохранение...' : 'Добавить сотрудника' }}
+                </button>
+            </div>
+        </div>
+    `
+};
+
+// Остров: модалка редактирования сотрудника
+const EmployeeEditModal = {
+    mixins: [EmployeeFormMixin],
+    props: ['initialData'],
+    data() {
+        return {
+            employeeId: '',
+            addresses: []
+        };
+    },
+    created() {
+        loadEmployeeAddressOptions().then(list => { this.addresses = list || []; });
+        const d = this.initialData || {};
+        const base = this.emptyForm();
+        Object.keys(base).forEach(k => {
+            if (d[k] !== undefined && d[k] !== null) {
+                base[k] = String(d[k]);
+            }
+        });
+        this.formData = base;
+        this.employeeId = d.id ? String(d.id) : '';
+    },
+    methods: {
+        async updateEmployee() {
+            this.error = '';
+            this.isSubmitting = true;
+            try {
+                const response = await fetch('/api/reference/employees/island/' + this.employeeId, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.buildPayload())
+                });
+                if (!response.ok) {
+                    throw new Error(this.readError(await response.text(), 'Ошибка обновления'));
+                }
+                this.closeModal();
+                window.refreshEmployeesTable();
+            } catch (err) {
+                this.error = err.message || 'Неизвестная ошибка';
+                console.error('Ошибка обновления сотрудника:', err);
+            } finally {
+                this.isSubmitting = false;
+            }
+        },
+        closeModal() {
+            const modal = document.getElementById('edit-employee-modal');
+            if (modal) modal.style.display = 'none';
+        }
+    },
+    template: `
+        <div class="island-form employee-edit-form">
+            <h3>Редактировать сотрудника #{{ employeeId }}</h3>
+
+            <div v-if="error" class="alert alert-danger">{{ error }}</div>
+
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>ФИО полностью *</label>
+                    <input type="text" v-model="formData.full_name">
+                </div>
+                <div class="form-group">
+                    <label>ФИО кратко</label>
+                    <input type="text" v-model="formData.short_name">
+                </div>
+                <div class="form-group">
+                    <label>Городской телефон</label>
+                    <input type="text" v-model="formData.phone_city">
+                </div>
+                <div class="form-group">
+                    <label>Внутренний телефон</label>
+                    <input type="text" v-model="formData.phone_internal">
+                </div>
+                <div class="form-group">
+                    <label>Адрес *</label>
+                    <select v-model="formData.address_id">
+                        <option value="">Выберите адрес</option>
+                        <option v-for="addr in addresses" :key="addr.id" :value="String(addr.id)">{{ addr.full_address }}</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button class="btn-secondary" @click="closeModal" :disabled="isSubmitting">Отмена</button>
+                <button class="btn-primary" @click="updateEmployee" :disabled="isSubmitting">
+                    {{ isSubmitting ? 'Сохранение...' : 'Сохранить' }}
+                </button>
+            </div>
+        </div>
+    `
+};
+
+// ==================== Обновление SSR-таблицы сотрудников ====================
+window.refreshEmployeesTable = function () {
+    const searchEl = document.querySelector('input[name="search"]');
+    const addressEl = document.querySelector('select[name="address_id"]');
+    const params = new URLSearchParams();
+    if (searchEl && searchEl.value) params.set('search', searchEl.value);
+    if (addressEl && addressEl.value) params.set('address_id', addressEl.value);
+    const qs = params.toString();
+    const url = '/api/content/employees' + (qs ? '?' + qs : '');
+
+    htmx.ajax('GET', url, {
+        target: '#employees-table-body',
+        swap: 'outerHTML',
+        select: '#employees-table-body'
+    });
+};
+
+
 // ==================== Контракт АРМ (ВСЕ поля — строки) ====================
 const workstationFormMixin = {
     methods: {
@@ -542,6 +777,10 @@ function mountIslands(container) {
 
         if (islandName === 'address-form') {
             component = AddressForm;
+        } else if (islandName === 'employee-form') {
+            component = EmployeeForm;
+        } else if (islandName === 'employee-edit') {
+            component = EmployeeEditModal;
         } else if (islandName === 'workstation-form') {
             component = WorkstationForm;
         } else if (islandName === 'workstation-edit') {

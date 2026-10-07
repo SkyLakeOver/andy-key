@@ -19,16 +19,16 @@ const (
 	DEFAULT_DB_PATH        = "data.db"
 	DEFAULT_LOGS_DIR       = "logs"
 	LOG_PREFIX             = "andy-key"
-	CURRENT_SCHEMA_VERSION = "0.0.5"
+	CURRENT_SCHEMA_VERSION = "0.0.6"
 )
 
 var (
-	DB_PATH          string
-	LOGS_DIR         string
-	db               *DB
-	panelLog         *os.File
-	remoteLog        *os.File
-	diagnosticLog    *os.File
+	DB_PATH       string
+	LOGS_DIR      string
+	db            *DB
+	panelLog      *os.File
+	remoteLog     *os.File
+	diagnosticLog *os.File
 )
 
 // loadConfig загружает конфигурацию из файла config.conf
@@ -106,7 +106,7 @@ type DB struct {
 // =============== СИСТЕМА ВЕРСИОНИРОВАНИЯ И МИГРАЦИЙ ===============
 func ensureSchemaVersion() error {
 	logDiagnostic("=== НАЧАЛО ПРОВЕРКИ ВЕРСИИ СХЕМЫ БАЗЫ ДАННЫХ ===")
-	
+
 	// Шаг 1: Проверяем наличие таблицы версий
 	tableExists, err := tableExists("schema_version")
 	if err != nil {
@@ -116,13 +116,13 @@ func ensureSchemaVersion() error {
 		logDiagnostic("Таблица schema_version отсутствует. Определяем текущую версию БД по структуре...")
 		return initializeSchemaVersion()
 	}
-	
+
 	// Шаг 2: Получаем текущую версию из БД
 	versionRows, err := QueryDB("SELECT version FROM schema_version ORDER BY updated_at DESC LIMIT 1")
 	if err != nil {
 		return fmt.Errorf("ошибка чтения версии схемы из базы данных: %v", err)
 	}
-	
+
 	// ИСПРАВЛЕНО: обработка случая, когда таблица существует, но пустая
 	if len(versionRows) == 0 {
 		logDiagnostic("Таблица schema_version существует, но не содержит записей. Инициализируем версию...")
@@ -145,11 +145,11 @@ func ensureSchemaVersion() error {
 		}
 		return nil
 	}
-	
+
 	currentDBVersion := versionRows[0]["version"]
 	logDiagnostic("Текущая версия схемы БД: " + currentDBVersion)
 	logDiagnostic("Требуемая версия схемы: " + CURRENT_SCHEMA_VERSION)
-	
+
 	// Шаг 3: Сравниваем версии
 	cmp := compareVersions(currentDBVersion, CURRENT_SCHEMA_VERSION)
 	if cmp == 0 {
@@ -169,23 +169,23 @@ func ensureSchemaVersion() error {
 		logDiagnostic(errorMsg)
 		return fmt.Errorf(errorMsg)
 	}
-	
+
 	// Шаг 4: Выполняем миграции от текущей версии до целевой
 	logPanel(fmt.Sprintf("Обнаружена устаревшая версия БД (%s). Выполняем миграции до версии %s...", currentDBVersion, CURRENT_SCHEMA_VERSION))
 	if err := migrateDB(currentDBVersion, CURRENT_SCHEMA_VERSION); err != nil {
 		logDiagnostic("=== ОШИБКА МИГРАЦИИ: " + err.Error() + " ===")
 		return fmt.Errorf("ошибка миграции базы данных: %v", err)
 	}
-	
+
 	// Шаг 5: Обновляем запись версии в БД
 	escapedVersion := strings.ReplaceAll(CURRENT_SCHEMA_VERSION, "'", "''")
 	if err := ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP"); err != nil {
 		return fmt.Errorf("ошибка обновления версии схемы: %v", err)
 	}
-	
+
 	logPanel("Версия схемы базы данных успешно обновлена до: " + CURRENT_SCHEMA_VERSION)
 	logDiagnostic("=== ПРОВЕРКА ВЕРСИИ ЗАВЕРШЕНА: МИГРАЦИЯ УСПЕШНА ===")
-	
+
 	return nil
 }
 
@@ -194,7 +194,7 @@ func initializeSchemaVersion() error {
 	// Определяем текущую версию по наличию ключевых таблиц
 	currentVersion := detectDBVersion()
 	logDiagnostic("Автоопределение версии БД: " + currentVersion)
-	
+
 	// Проверяем наличие всех таблиц для целевой версии
 	missingTables := checkRequiredTablesForVersion(CURRENT_SCHEMA_VERSION)
 	if len(missingTables) > 0 {
@@ -213,7 +213,7 @@ func initializeSchemaVersion() error {
 	} else {
 		logPanel("Структура БД соответствует версии " + CURRENT_SCHEMA_VERSION)
 	}
-	
+
 	// Создаем таблицу версий (если её ещё нет)
 	if exists, _ := tableExists("schema_version"); !exists {
 		if err := ExecDB(`CREATE TABLE IF NOT EXISTS schema_version (
@@ -224,17 +224,17 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		}
 		logDiagnostic("Создана таблица отслеживания версий")
 	}
-	
+
 	// Записываем определенную версию (НЕ текущую приложения!)
 	// Это важно для корректного выполнения миграций
 	escapedVersion := strings.ReplaceAll(currentVersion, "'", "''")
 	if err := ExecDB("INSERT INTO schema_version (version) VALUES ('" + escapedVersion + "')"); err != nil {
 		return fmt.Errorf("ошибка записи версии схемы: %v", err)
 	}
-	
+
 	logPanel("Инициализирована версия схемы базы данных: " + currentVersion)
 	logDiagnostic("Автоопределение завершено. Текущая версия: " + currentVersion)
-	
+
 	// Если текущая версия ниже целевой, выполняем миграции
 	if compareVersions(currentVersion, CURRENT_SCHEMA_VERSION) < 0 {
 		logDiagnostic("Требуются миграции от версии " + currentVersion + " до " + CURRENT_SCHEMA_VERSION)
@@ -242,7 +242,7 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			return err
 		}
 	}
-	
+
 	return nil
 }
 
@@ -287,9 +287,9 @@ func detectDBVersion() string {
 // Выполнение миграций от текущей версии до целевой
 func migrateDB(fromVersion, toVersion string) error {
 	logDiagnostic(fmt.Sprintf("Начало миграции: %s → %s", fromVersion, toVersion))
-	
+
 	// Определяем последовательность миграций
-	versions := []string{"0.0.0", "0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.4.1", "0.0.4.2", "0.0.5"}
+	versions := []string{"0.0.0", "0.0.1", "0.0.2", "0.0.3", "0.0.4", "0.0.4.1", "0.0.4.2", "0.0.5", "0.0.6"}
 	startIdx := -1
 	endIdx := -1
 	for i, v := range versions {
@@ -303,14 +303,14 @@ func migrateDB(fromVersion, toVersion string) error {
 	if startIdx == -1 || endIdx == -1 {
 		return fmt.Errorf("неизвестная версия для миграции: %s → %s", fromVersion, toVersion)
 	}
-	
+
 	// Выполняем миграции по шагам
 	for i := startIdx; i < endIdx; i++ {
 		current := versions[i]
 		next := versions[i+1]
 		logPanel(fmt.Sprintf("Выполняется миграция %s → %s...", current, next))
 		logDiagnostic(fmt.Sprintf("Миграция %s → %s: начало", current, next))
-		
+
 		var err error
 		switch next {
 		case "0.0.1":
@@ -327,19 +327,21 @@ func migrateDB(fromVersion, toVersion string) error {
 			err = migrate_0_0_4_1_to_0_0_4_2()
 		case "0.0.5":
 			err = migrate_0_0_4_2_to_0_0_5()
+		case "0.0.6":
+			err = migrate_0_0_5_to_0_0_6()
 		default:
 			return fmt.Errorf("неизвестная версия миграции: %s", next)
 		}
-		
+
 		if err != nil {
 			logDiagnostic(fmt.Sprintf("Миграция %s → %s: ОШИБКА - %v", current, next, err))
 			return fmt.Errorf("ошибка миграции %s → %s: %v", current, next, err)
 		}
 		logDiagnostic(fmt.Sprintf("Миграция %s → %s: УСПЕШНО", current, next))
 	}
-	
+
 	logPanel(fmt.Sprintf("Миграция завершена: %s → %s", fromVersion, toVersion))
-	
+
 	return nil
 }
 
@@ -425,18 +427,18 @@ BEGIN
 UPDATE tasks SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 END`,
 	}
-	
+
 	for _, query := range queries {
 		if err := ExecDB(query); err != nil {
 			return fmt.Errorf("ошибка создания таблицы при миграции 0.0.0→0.0.1: %v", err)
 		}
 	}
-	
+
 	// Создаем администратора по умолчанию
 	ensureDefaultAdmin()
-	
+
 	logPanel("Миграция 0.0.0→0.0.1: созданы базовые таблицы и администратор")
-	
+
 	return nil
 }
 
@@ -447,7 +449,7 @@ func migrate_0_0_1_to_0_0_2() error {
 		logDiagnostic("Миграция 0.0.1→0.0.2: таблица task_bash_commands уже существует, пропускаем")
 		return nil
 	}
-	
+
 	query := `CREATE TABLE IF NOT EXISTS task_bash_commands (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 task_id INTEGER NOT NULL,
@@ -455,13 +457,13 @@ command TEXT NOT NULL,
 order_index INTEGER NOT NULL,
 FOREIGN KEY (task_id) REFERENCES tasks (id) ON DELETE CASCADE
 )`
-	
+
 	if err := ExecDB(query); err != nil {
 		return fmt.Errorf("ошибка создания таблицы task_bash_commands: %v", err)
 	}
-	
+
 	logPanel("Миграция 0.0.1→0.0.2: добавлена таблица команд bash")
-	
+
 	return nil
 }
 
@@ -481,7 +483,7 @@ setting_value TEXT NOT NULL
 		}
 		logPanel("Миграция 0.0.2→0.0.3: добавлена таблица настроек платформы")
 	}
-	
+
 	// Проверяем, существует ли таблица версий (должна быть создана в initializeSchemaVersion)
 	if exists, _ := tableExists("schema_version"); !exists {
 		query := `CREATE TABLE IF NOT EXISTS schema_version (
@@ -493,7 +495,7 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 		}
 		logPanel("Миграция 0.0.2→0.0.3: добавлена таблица отслеживания версий")
 	}
-	
+
 	// Инициализируем футер, если его нет
 	footerKey := "footer_text"
 	rows, _ := QueryDB("SELECT setting_value FROM platform_settings WHERE setting_key = '" + footerKey + "'")
@@ -512,20 +514,20 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 			}
 		}
 	}
-	
+
 	// Обновляем версию в таблице (если она уже существует)
 	// Это нужно, потому что в initializeSchemaVersion мы записали версию 0.0.2
 	// А после миграции нужно обновить до 0.0.3
 	escapedVersion := strings.ReplaceAll("0.0.3", "'", "''")
 	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
-	
+
 	return nil
 }
 
 // Миграция 0.0.3 → 0.0.4: добавление справочников и перенос данных
 func migrate_0_0_3_to_0_0_4() error {
 	logDiagnostic("Миграция 0.0.3→0.0.4: начало создания справочников")
-	
+
 	// Создаем таблицу адресов
 	addressesQuery := `CREATE TABLE IF NOT EXISTS reference_addresses (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -539,12 +541,12 @@ description TEXT,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )`
-	
+
 	if err := ExecDB(addressesQuery); err != nil {
 		return fmt.Errorf("ошибка создания таблицы reference_addresses: %v", err)
 	}
 	logDiagnostic("Миграция 0.0.3→0.0.4: таблица reference_addresses создана")
-	
+
 	// Создаем таблицу подразделений
 	departmentsQuery := `CREATE TABLE IF NOT EXISTS reference_departments (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -555,12 +557,12 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 FOREIGN KEY (parent_id) REFERENCES reference_departments (id)
 )`
-	
+
 	if err := ExecDB(departmentsQuery); err != nil {
 		return fmt.Errorf("ошибка создания таблицы reference_departments: %v", err)
 	}
 	logDiagnostic("Миграция 0.0.3→0.0.4: таблица reference_departments создана")
-	
+
 	// Создаем таблицу должностей
 	positionsQuery := `CREATE TABLE IF NOT EXISTS reference_positions (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -568,16 +570,16 @@ name TEXT NOT NULL UNIQUE,
 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )`
-	
+
 	if err := ExecDB(positionsQuery); err != nil {
 		return fmt.Errorf("ошибка создания таблицы reference_positions: %v", err)
 	}
 	logDiagnostic("Миграция 0.0.3→0.0.4: таблица reference_positions создана")
-	
+
 	// Обновляем версию схемы
 	escapedVersion := strings.ReplaceAll("0.0.4", "'", "''")
 	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
-	
+
 	return nil
 }
 
@@ -596,13 +598,13 @@ func migrate_0_0_4_to_0_0_4_1() error {
 // Миграция 0.0.4.1 → 0.0.4.2: добавление поля description в reference_addresses
 func migrate_0_0_4_1_to_0_0_4_2() error {
 	logDiagnostic("Миграция 0.0.4.1→0.0.4.2: добавление поля description в таблицу адресов")
-	
+
 	// Проверяем наличие колонки description
 	descExists, err := columnExists("reference_addresses", "description")
 	if err != nil {
 		return fmt.Errorf("ошибка проверки наличия колонки description: %v", err)
 	}
-	
+
 	if !descExists {
 		// Добавляем колонку description
 		query := `ALTER TABLE reference_addresses ADD COLUMN description TEXT`
@@ -613,7 +615,7 @@ func migrate_0_0_4_1_to_0_0_4_2() error {
 	} else {
 		logDiagnostic("Миграция 0.0.4.1→0.0.4.2: колонка description уже существует, пропускаем")
 	}
-	
+
 	// Обновляем версию схемы
 	escapedVersion := strings.ReplaceAll("0.0.4.2", "'", "''")
 	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
@@ -671,6 +673,107 @@ func migrate_0_0_4_2_to_0_0_5() error {
 	return nil
 }
 
+// migrate_0_0_5_to_0_0_6 — Унификация-1 (TASKS.md раздел 3, пункт 1).
+// Правило ключа: уникален только id; бизнес-UNIQUE снят (TASKS.md раздел 1).
+// Идемпотентная: если бизнес-UNIQUE-индекса у reference_addresses уже нет
+// (например, свежая БД создана по getSchemaQueries без UNIQUE) — только
+// поднимается версия схемы, пересоздание таблицы не выполняется.
+func migrate_0_0_5_to_0_0_6() error {
+	logDiagnostic("Миграция 0.0.5→0.0.6: правило ключа — reference_addresses без бизнес-UNIQUE")
+
+	// а0) Проверяем наличие таблицы: для легаси-БД без reference_addresses
+	// миграция не применима (схема создаётся getSchemaQueries — уже без UNIQUE),
+	// только поднимаем версию.
+	if exists, _ := tableExists("reference_addresses"); !exists {
+		escapedVersion := strings.ReplaceAll("0.0.6", "'", "''")
+		ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
+		logDiagnostic("Миграция 0.0.5→0.0.6: таблица reference_addresses отсутствует — только поднята версия")
+		return nil
+	}
+
+	// а) Проверяем PRAGMA index_list(reference_addresses): ищем уникальный индекс,
+	// построенный по бизнес-колонкам (sqlite3 именует авто-индексы UNIQUE как
+	// sqlite_autoindex_reference_addresses_N).
+	rows, err := QueryDB("PRAGMA index_list(reference_addresses)")
+	if err != nil {
+		return fmt.Errorf("ошибка PRAGMA index_list(reference_addresses): %v", err)
+	}
+	businessUniqueIndex := ""
+	for _, r := range rows {
+		unique := strings.ToLower(r["unique"])
+		if unique != "1" && unique != "true" {
+			continue
+		}
+		name := r["name"]
+		if name == "" {
+			continue
+		}
+		cols, err := QueryDB("PRAGMA index_info('" + strings.ReplaceAll(name, "'", "''") + "')")
+		if err != nil {
+			return fmt.Errorf("ошибка PRAGMA index_info(%s): %v", name, err)
+		}
+		colSet := map[string]bool{}
+		for _, c := range cols {
+			colSet[c["name"]] = true
+		}
+		// Бизнес-UNIQUE = уникальный индекс, включающий street И building
+		// (технические уникальности других справочников здесь отсутствуют).
+		if colSet["street"] && colSet["building"] {
+			businessUniqueIndex = name
+			break
+		}
+	}
+
+	if businessUniqueIndex == "" {
+		// Бизнес-UNIQUE-индекса нет — пересоздание не нужно, только поднять версию.
+		escapedVersion := strings.ReplaceAll("0.0.6", "'", "''")
+		ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
+		logDiagnostic("Миграция 0.0.5→0.0.6: бизнес-UNIQUE отсутствует, пересоздание не требуется — версия поднята")
+		return nil
+	}
+
+	// б) Пересоздание таблицы БЕЗ бизнес-UNIQUE (полный контракт колонок 0.0.5+).
+	createNew := `CREATE TABLE reference_addresses_new (
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+street TEXT NOT NULL,
+building TEXT NOT NULL,
+cabinet TEXT,
+corridor TEXT,
+floor INTEGER CHECK (floor BETWEEN 1 AND 5),
+service_room TEXT,
+description TEXT,
+type TEXT DEFAULT 'cabinet',
+service_room_type TEXT,
+garage_number TEXT,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`
+	if err := ExecDB(createNew); err != nil {
+		return fmt.Errorf("ошибка создания reference_addresses_new: %v", err)
+	}
+
+	copyBack := `INSERT INTO reference_addresses_new (id, street, building, cabinet, corridor, floor, service_room, description, type, service_room_type, garage_number, created_at, updated_at)
+SELECT id, street, building, cabinet, corridor, floor, service_room, description, type, service_room_type, garage_number, created_at, updated_at FROM reference_addresses`
+	if err := ExecDB(copyBack); err != nil {
+		ExecDB("DROP TABLE IF EXISTS reference_addresses_new")
+		return fmt.Errorf("ошибка переноса данных в reference_addresses_new: %v", err)
+	}
+
+	if err := ExecDB("DROP TABLE reference_addresses"); err != nil {
+		ExecDB("DROP TABLE IF EXISTS reference_addresses_new")
+		return fmt.Errorf("ошибка DROP TABLE reference_addresses: %v", err)
+	}
+	if err := ExecDB("ALTER TABLE reference_addresses_new RENAME TO reference_addresses"); err != nil {
+		return fmt.Errorf("ошибка переименования reference_addresses_new: %v", err)
+	}
+
+	// в) Поднимаем версию схемы.
+	escapedVersion := strings.ReplaceAll("0.0.6", "'", "''")
+	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
+	logPanel("Миграция 0.0.5→0.0.6: reference_addresses пересоздана без бизнес-UNIQUE (правило ключа)")
+	logDiagnostic("Миграция 0.0.5→0.0.6: завершена успешно")
+	return nil
+}
+
 // Старый код миграции 0.0.3 → 0.0.4 (оставлен для совместимости, но теперь не используется)
 /*
 UNIQUE(street, building, cabinet, corridor, service_room)
@@ -679,7 +782,7 @@ UNIQUE(street, building, cabinet, corridor, service_room)
 		return fmt.Errorf("ошибка создания таблицы адресов: %v", err)
 	}
 	logPanel("Миграция 0.0.3→0.0.4: создана таблица адресов")
-	
+
 	// Создаем таблицу сотрудников
 	employeesQuery := `CREATE TABLE IF NOT EXISTS reference_employees (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -695,7 +798,7 @@ FOREIGN KEY (address_id) REFERENCES reference_addresses(id)
 		return fmt.Errorf("ошибка создания таблицы сотрудников: %v", err)
 	}
 	logPanel("Миграция 0.0.3→0.0.4: создана таблица сотрудников")
-	
+
 	// Создаем таблицу АРМ
 	workstationsQuery := `CREATE TABLE IF NOT EXISTS reference_workstations (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -717,7 +820,7 @@ FOREIGN KEY (employee_id) REFERENCES reference_employees(id)
 		return fmt.Errorf("ошибка создания таблицы АРМ: %v", err)
 	}
 	logPanel("Миграция 0.0.3→0.0.4: создана таблица АРМ")
-	
+
 	// Создаем таблицу хостов
 	hostsQuery := `CREATE TABLE IF NOT EXISTS reference_hosts (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -734,7 +837,7 @@ FOREIGN KEY (employee_id) REFERENCES reference_employees(id)
 		return fmt.Errorf("ошибка создания таблицы хостов: %v", err)
 	}
 	logPanel("Миграция 0.0.3→0.0.4: создана таблица хостов")
-	
+
 	// Создаем таблицу сетевого оборудования
 	networkEqQuery := `CREATE TABLE IF NOT EXISTS reference_network_equipment (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -750,7 +853,7 @@ FOREIGN KEY (address_id) REFERENCES reference_addresses(id)
 		return fmt.Errorf("ошибка создания таблицы сетевого оборудования: %v", err)
 	}
 	logPanel("Миграция 0.0.3→0.0.4: создана таблица сетевого оборудования")
-	
+
 	// Создаем таблицу сетевых МФУ
 	mfpsQuery := `CREATE TABLE IF NOT EXISTS reference_network_mfps (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -766,7 +869,7 @@ FOREIGN KEY (address_id) REFERENCES reference_addresses(id)
 		return fmt.Errorf("ошибка создания таблицы сетевых МФУ: %v", err)
 	}
 	logPanel("Миграция 0.0.3→0.0.4: создана таблица сетевых МФУ")
-	
+
 	// Создаем таблицу IP телефонов
 	phonesQuery := `CREATE TABLE IF NOT EXISTS reference_ip_phones (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -780,7 +883,7 @@ FOREIGN KEY (address_id) REFERENCES reference_addresses(id)
 		return fmt.Errorf("ошибка создания таблицы IP телефонов: %v", err)
 	}
 	logPanel("Миграция 0.0.3→0.0.4: создана таблица IP телефонов")
-	
+
 	// Переносим данные из старой таблицы hosts в новые справочники
 	// Сначала создаем адреса из существующих данных
 	hostsRows, _ := QueryDB("SELECT DISTINCT address_street, address_building, address_cabinet FROM hosts WHERE enabled = 1")
@@ -788,7 +891,7 @@ FOREIGN KEY (address_id) REFERENCES reference_addresses(id)
 		street := row["address_street"]
 		building := row["address_building"]
 		cabinet := row["address_cabinet"]
-		
+
 		// Проверяем, существует ли уже такой адрес
 		checkQuery := fmt.Sprintf(
 			"SELECT id FROM reference_addresses WHERE street = '%s' AND building = '%s' AND cabinet = '%s'",
@@ -807,7 +910,7 @@ FOREIGN KEY (address_id) REFERENCES reference_addresses(id)
 			ExecDB(insertQuery)
 		}
 	}
-	
+
 	// Теперь переносим хосты в новую таблицу
 	hostsData, _ := QueryDB(`
 SELECT h.id, h.full_name, h.ip, h.ssh_port, h.enabled,
@@ -829,19 +932,19 @@ WHERE h.enabled = 1
 		)
 		ExecDB(insertHostQuery)
 	}
-	
+
 	// Переименовываем старую таблицу для резервной копии
 	ExecDB("ALTER TABLE hosts RENAME TO hosts_legacy")
 	logPanel("Миграция 0.0.3→0.0.4: старая таблица hosts переименована в hosts_legacy")
-	
+
 	// Обновляем связи в таблицах задач
 	ExecDB("UPDATE task_hosts SET host_id = (SELECT rh.id FROM reference_hosts rh JOIN hosts_legacy hl ON rh.ip = hl.ip WHERE hl.id = task_hosts.host_id)")
 	logPanel("Миграция 0.0.3→0.0.4: перенос данных завершен")
-	
+
 	// Обновляем версию в таблице
 	escapedVersion := strings.ReplaceAll("0.0.4", "'", "''")
 	ExecDB("UPDATE schema_version SET version = '" + escapedVersion + "', updated_at = CURRENT_TIMESTAMP")
-	
+
 	return nil
 }
 */
@@ -858,15 +961,15 @@ func compareVersions(v1, v2 string) int {
 	if v2 == "0.0.0" {
 		return 1
 	}
-	
+
 	parts1 := strings.Split(v1, ".")
 	parts2 := strings.Split(v2, ".")
-	
+
 	maxLen := len(parts1)
 	if len(parts2) > maxLen {
 		maxLen = len(parts2)
 	}
-	
+
 	for i := 0; i < maxLen; i++ {
 		var num1, num2 int
 		if i < len(parts1) {
@@ -875,7 +978,7 @@ func compareVersions(v1, v2 string) int {
 		if i < len(parts2) {
 			num2, _ = strconv.Atoi(parts2[i])
 		}
-		
+
 		if num1 < num2 {
 			return -1
 		}
@@ -883,7 +986,7 @@ func compareVersions(v1, v2 string) int {
 			return 1
 		}
 	}
-	
+
 	return 0
 }
 
@@ -1136,13 +1239,13 @@ updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )`,
 		},
 	}
-	
+
 	if ver, ok := tables[version]; ok {
 		if query, ok := ver[tableName]; ok {
 			return query
 		}
 	}
-	
+
 	return ""
 }
 
@@ -1272,9 +1375,8 @@ corridor TEXT,
 floor INTEGER CHECK (floor BETWEEN 1 AND 5),
 service_room TEXT,
 description TEXT,
-created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-UNIQUE(street, building, cabinet, corridor, service_room)
-)`,
+created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+)`, // Правило ключа (TASKS.md раздел 1): уникален только id; бизнес-UNIQUE снят (миграция 0.0.6)
 		`CREATE TABLE IF NOT EXISTS reference_employees (
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 full_name TEXT NOT NULL,
@@ -1354,27 +1456,27 @@ func InitDB() error {
 	if err := loadConfig(); err != nil {
 		return fmt.Errorf("ошибка загрузки конфигурации: %v", err)
 	}
-	
+
 	// Проверяем наличие старых файлов БД и переименовываем их при необходимости
 	if err := migrateOldDB(); err != nil {
 		return fmt.Errorf("ошибка миграции старой БД: %v", err)
 	}
-	
+
 	var err error
 	crypto, err := NewCrypto()
 	if err != nil {
 		return fmt.Errorf("ошибка инициализации криптографии: %v", err)
 	}
-	
+
 	if _, err := exec.LookPath("sqlite3"); err != nil {
 		return fmt.Errorf("требуется утилита sqlite3: %v", err)
 	}
-	
+
 	// Инициализация журнала
 	if err := initLogger(); err != nil {
 		return fmt.Errorf("ошибка инициализации журнала: %v", err)
 	}
-	
+
 	// Выполняем все запросы создания таблиц (безопасно благодаря IF NOT EXISTS)
 	// Это гарантирует, что все таблицы существуют перед проверкой версии
 	queries := getSchemaQueries()
@@ -1391,14 +1493,14 @@ func InitDB() error {
 	// выполняется отдельным соединением через helper ниже (в том же процессе, что
 	// и рабочие запросы).
 	enableForeignKeysPragma()
-	
+
 	// КРИТИЧЕСКИ ВАЖНО: Проверяем и обновляем версию схемы ДО инициализации футера
 	// Это гарантирует, что таблица platform_settings существует
 	if err := ensureSchemaVersion(); err != nil {
 		logDiagnostic("ОШИБКА ВЕРСИОНИРОВАНИЯ: " + err.Error())
 		return err
 	}
-	
+
 	// Инициализация зашифрованного футера (теперь безопасно вызывать GetCrypto)
 	footerKey := "footer_text"
 	footerPlaintext := "Powered by andy-key"
@@ -1414,11 +1516,11 @@ func InitDB() error {
 			logPanel("Инициализирован зашифрованный футер платформы")
 		}
 	}
-	
+
 	ensureDefaultAdmin()
-	
+
 	db = &DB{crypto: crypto}
-	
+
 	// Финальная проверка версии для лога
 	versionCheck, _ := QueryDB("SELECT version FROM schema_version ORDER BY updated_at DESC LIMIT 1")
 	if len(versionCheck) > 0 {
@@ -1426,7 +1528,7 @@ func InitDB() error {
 	} else {
 		logPanel("База данных инициализирована. Версия схемы не определена (требуется перезапуск)")
 	}
-	
+
 	return nil
 }
 
@@ -1436,30 +1538,30 @@ func initLogger() error {
 	if err := os.MkdirAll(LOGS_DIR, 0755); err != nil {
 		return fmt.Errorf("ошибка создания папки логов: %v", err)
 	}
-	
+
 	timestamp := time.Now().Format("2006-01-02-15-04-05")
 	panelLogPath := filepath.Join(LOGS_DIR, fmt.Sprintf("%s-%s-panel.log", LOG_PREFIX, timestamp))
 	remoteLogPath := filepath.Join(LOGS_DIR, fmt.Sprintf("%s-%s-remote.log", LOG_PREFIX, timestamp))
 	diagnosticLogPath := filepath.Join(LOGS_DIR, fmt.Sprintf("%s-%s-diagnostic.log", LOG_PREFIX, timestamp))
-	
+
 	var err error
 	panelLog, err = os.OpenFile(panelLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("ошибка создания файла лога panel: %v", err)
 	}
-	
+
 	remoteLog, err = os.OpenFile(remoteLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("ошибка создания файла лога remote: %v", err)
 	}
-	
+
 	diagnosticLog, err = os.OpenFile(diagnosticLogPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return fmt.Errorf("ошибка создания файла лога diagnostic: %v", err)
 	}
-	
+
 	logPanel("Журнал инициализирован. Файлы: " + filepath.Base(panelLogPath) + ", " + filepath.Base(remoteLogPath) + ", " + filepath.Base(diagnosticLogPath))
-	
+
 	return nil
 }
 
@@ -1492,24 +1594,24 @@ func getLogEntries(logType string, limit int) ([]string, error) {
 	if len(matches) == 0 {
 		return []string{"Журнал пуст"}, nil
 	}
-	
+
 	// Читаем содержимое файла (самый новый)
 	content, err := os.ReadFile(matches[len(matches)-1])
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Разбиваем на строки и берём последние N
 	lines := strings.Split(string(content), "\n")
 	if len(lines) > limit {
 		lines = lines[len(lines)-limit-1 : len(lines)-1]
 	}
-	
+
 	// Удаляем пустые строки в конце
 	for len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]
 	}
-	
+
 	return lines, nil
 }
 
@@ -1524,7 +1626,7 @@ func hashPassword(password string) string {
 func ensureDefaultAdmin() {
 	username := "admin"
 	expectedHash := hashPassword("admin")
-	
+
 	rows, err := QueryDB(fmt.Sprintf(
 		"SELECT id, password_hash FROM admin_users WHERE username = '%s'",
 		strings.ReplaceAll(username, "'", "''"),
@@ -1597,17 +1699,17 @@ func QueryDB(query string, args ...string) ([]map[string]string, error) {
 		// человекочитаемые сообщения).
 		return nil, fmt.Errorf("ошибка запроса: %v: %s", err, strings.TrimSpace(string(output)))
 	}
-	
+
 	if len(output) == 0 {
 		return []map[string]string{}, nil
 	}
-	
+
 	// Парсим в []map[string]interface{} для обработки разных типов (числа, строки, булевы)
 	var rawResult []map[string]interface{}
 	if err := json.Unmarshal(output, &rawResult); err != nil {
 		return nil, fmt.Errorf("ошибка парсинга JSON: %v. Вывод: %s", err, string(output))
 	}
-	
+
 	// Конвертируем все значения в строки
 	// ИСПРАВЛЕНО: булевы значения конвертируем в "1"/"0" для совместимости с фронтендом
 	result := make([]map[string]string, len(rawResult))
@@ -1639,7 +1741,7 @@ func QueryDB(query string, args ...string) ([]map[string]string, error) {
 			}
 		}
 	}
-	
+
 	return result, nil
 }
 
@@ -1749,7 +1851,7 @@ func GetCrypto() *Crypto {
 		}
 		logDiagnostic("Восстановлен криптографический объект после ошибки инициализации")
 	}
-	
+
 	return db.crypto
 }
 
@@ -1769,20 +1871,20 @@ func CheckAdminAuth(username, password string) (bool, int, string) {
 		logDiagnostic("DEBUG AUTH [ШАГ 1]: Пользователь с логином '" + username + "' НЕ НАЙДЕН в базе данных")
 		return false, 0, "Неверный логин"
 	}
-	
+
 	// === ШАГ 2: Пользователь найден, получаем данные ===
 	userId, _ := strconv.Atoi(rows[0]["id"])
 	storedHash := rows[0]["password_hash"]
-	
+
 	// === ШАГ 3: Хешируем введенный пароль с солью ===
 	computedHash := hashPassword(password)
-	
+
 	// === ШАГ 4: Сравнение хешей ===
 	if computedHash != storedHash {
 		logDiagnostic("DEBUG AUTH [ШАГ 4]: Хеши НЕ СОВПАДАЮТ для пользователя '" + username + "'")
 		return false, 0, "Неверный пароль"
 	}
-	
+
 	return true, userId, ""
 }
 
@@ -1798,25 +1900,25 @@ func CreateSession(userID int) (string, error) {
 		logDiagnostic("CRITICAL ERROR: Сгенерировано только " + strconv.Itoa(n) + " байт вместо 16")
 		return "", fmt.Errorf("неполная генерация токена")
 	}
-	
+
 	// Конвертируем в шестнадцатеричный формат
 	tokenHex := hex.EncodeToString(token)
-	
+
 	// Форматирование даты истечения в UTC
 	expiresAt := time.Now().UTC().Add(24 * time.Hour)
 	expiresAtStr := expiresAt.Format("2006-01-02 15:04:05")
-	
+
 	// Экранирование токена
 	escapedToken := strings.ReplaceAll(tokenHex, "'", "''")
-	
+
 	// Формируем запрос
 	query := "INSERT INTO sessions (user_id, token, expires_at) VALUES (" + strconv.Itoa(userID) + ", '" + escapedToken + "', '" + expiresAtStr + "')"
-	
+
 	// Выполняем запрос
 	cmdArgs := []string{DB_PATH, query}
 	cmd := exec.Command("sqlite3", cmdArgs...)
-	_, err = cmd.CombinedOutput()  // ← ИСПОЛЬЗУЕМ ПОДЧЁРКИВАНИЕ _
-	
+	_, err = cmd.CombinedOutput() // ← ИСПОЛЬЗУЕМ ПОДЧЁРКИВАНИЕ _
+
 	if err != nil {
 		logDiagnostic("CRITICAL ERROR: Ошибка вставки сессии в БД: " + err.Error())
 		// Проверяем существование таблицы
@@ -1833,10 +1935,10 @@ created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 FOREIGN KEY (user_id) REFERENCES admin_users (id)
 )`)
 		}
-		
+
 		return "", fmt.Errorf("ошибка создания сессии: %v", err)
 	}
-	
+
 	return tokenHex, nil
 }
 
@@ -1844,7 +1946,7 @@ FOREIGN KEY (user_id) REFERENCES admin_users (id)
 func CheckSession(token string) bool {
 	// Экранируем токен
 	escapedToken := strings.ReplaceAll(token, "'", "''")
-	
+
 	// Используем правильный формат для сравнения дат
 	// SQLite использует 'now' для текущего времени в формате UTC
 	rows, err := QueryDB("SELECT id FROM sessions WHERE token = '" + escapedToken + "' AND expires_at > DATETIME('now')")
@@ -1857,6 +1959,6 @@ func CheckSession(token string) bool {
 		ExecDB("DELETE FROM sessions WHERE expires_at < DATETIME('now')")
 		return false
 	}
-	
+
 	return true
 }
