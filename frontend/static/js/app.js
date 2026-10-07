@@ -97,69 +97,6 @@ document.addEventListener('alpine:init', () => {
         }
     }));
 
-    // Компонент для страницы сотрудников
-    Alpine.data('employeesPage', () => ({
-        searchQuery: '',
-        filterAddress: '',
-        showAddModal: false,
-        showEditModal: false,
-        formData: { fio: '', position: '', department: '', phone: '', email: '', address_id: null },
-        employees: [],
-        addresses: [],
-        
-        init() { this.loadEmployees(); this.loadAddresses(); },
-        
-        loadEmployees() {
-            fetch('/api/reference/employees')
-                .then(r => r.json())
-                .then(data => { this.employees = data || []; })
-                .catch(err => console.error('Ошибка загрузки сотрудников:', err));
-        },
-
-        loadAddresses() {
-            fetch('/api/reference/addresses')
-                .then(r => r.json())
-                .then(data => { this.addresses = data || []; })
-                .catch(err => console.error('Ошибка загрузки адресов:', err));
-        },
-        
-        get filteredEmployees() {
-            return this.employees.filter(emp => {
-                const s = this.searchQuery.toLowerCase();
-                const matchesSearch = emp.fio.toLowerCase().includes(s) || (emp.position && emp.position.toLowerCase().includes(s)) || (emp.department && emp.department.toLowerCase().includes(s));
-                const matchesAddress = !this.filterAddress || emp.address_id == this.filterAddress;
-                return matchesSearch && matchesAddress;
-            });
-        },
-        
-        openAddModal() { this.formData = { fio: '', position: '', department: '', phone: '', email: '', address_id: null }; this.showAddModal = true; },
-        closeAddModal() { this.showAddModal = false; },
-        
-        submitEmployee() {
-            fetch('/api/reference/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.formData) })
-            .then(r => { if (r.ok) { this.closeAddModal(); this.loadEmployees(); } else { alert('Ошибка'); } })
-            .catch(() => alert('Ошибка'));
-        },
-        
-        editEmployee(emp) {
-            this.formData = { 
-                id: emp.id,
-                fio: emp.fio || '', 
-                position: emp.position || '', 
-                department: emp.department || '', 
-                phone: emp.phone || '', 
-                email: emp.email || '', 
-                address_id: emp.address_id 
-            };
-            this.showEditModal = true;
-        },
-        
-        closeModal() {
-            this.showAddModal = false;
-            this.showEditModal = false;
-        }
-    }));
-
     // Компонент для страницы адресов
     
 

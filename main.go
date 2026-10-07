@@ -300,11 +300,56 @@ func contentSectionHandler(w http.ResponseWriter, r *http.Request) {
 			data["TypeFilter"] = typeFilter
 		}
 	case "employees":
-		rows, err := QueryDB(`SELECT id, full_name, short_name, phone_city, phone_internal, address_id, created_at FROM reference_employees ORDER BY id`)
+		// Порт-employees (TASKS.md раздел 3): серверная фильтрация SSR-таблицы
+		// по образцу раздела «Адреса». WHERE — только параметризованные условия.
+		search := strings.TrimSpace(r.URL.Query().Get("search"))
+		addressFilter := strings.TrimSpace(r.URL.Query().Get("address_id"))
+
+		query := "SELECT e.id, e.full_name, e.short_name, e.phone_city, e.phone_internal, e.address_id, e.created_at," +
+			" a.street, a.building, a.cabinet, a.corridor, a.service_room, a.garage_number, a.floor" +
+			" FROM reference_employees e LEFT JOIN reference_addresses a ON e.address_id = a.id"
+
+		var conditions []string
+		var args []string
+		if search != "" {
+			conditions = append(conditions, "(e.full_name LIKE ? OR e.short_name LIKE ?)")
+			like := "%" + search + "%"
+			args = append(args, like, like)
+		}
+		if addressFilter != "" {
+			conditions = append(conditions, "e.address_id = ?")
+			args = append(args, addressFilter)
+		}
+		if len(conditions) > 0 {
+			query += " WHERE " + strings.Join(conditions, " AND ")
+		}
+		query += " ORDER BY e.id"
+
+		rows, err := QueryDB(query, args...)
 		if err != nil {
 			dbError = err
 		} else {
-			data["employees"] = rows
+			// Формируем человекочитаемый адрес (FormatFullAddress) для SSR-строки
+			for i := range rows {
+				rows[i]["full_address"] = FormatFullAddress(rows[i]["street"], rows[i]["building"],
+					rows[i]["cabinet"], rows[i]["corridor"], rows[i]["service_room"], rows[i]["garage_number"], rows[i]["floor"])
+			}
+			// Ключ "Employees" с ЗАГЛАВНОЙ — шаблон итерирует .Employees
+			data["Employees"] = rows
+			data["Search"] = search
+			data["AddressFilter"] = addressFilter
+			// Список адресов для селекта фильтра
+			addresses, err := QueryDB(`SELECT id, street, building, cabinet, corridor, service_room, garage_number, floor FROM reference_addresses ORDER BY id`)
+			if err == nil {
+				for i := range addresses {
+					addresses[i]["full_address"] = FormatFullAddress(addresses[i]["street"], addresses[i]["building"],
+						addresses[i]["cabinet"], addresses[i]["corridor"], addresses[i]["service_room"], addresses[i]["garage_number"], addresses[i]["floor"])
+				}
+				data["AddressesForFilter"] = addresses
+			} else {
+				logDiagnostic("Ошибка загрузки адресов для фильтра сотрудников: " + err.Error())
+				data["AddressesForFilter"] = []map[string]string{}
+			}
 		}
 	case "workstations":
 		// Фаза 2 (AK-2.2.0): серверная фильтрация SSR-таблицы АРМ по образцу раздела «Адреса».
@@ -2632,6 +2677,9 @@ func setupRoutes() {
 	registerAddressIslandRoutes(authMiddleware)
 	// Island-маршруты раздела «АРМ» (Фаза 2, AK-2.2.0): по образцу раздела «Адреса»
 	registerWorkstationIslandRoutes(authMiddleware)
+	// Island-маршруты раздела «Сотрудники» (Порт-employees): по образцу «Адресов».
+	// Старый JSON API ниже остаётся до демонтажа Alpine (TASKS.md раздел 5).
+	registerEmployeeIslandRoutes(authMiddleware)
 	http.HandleFunc("/api/reference/employees", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
 	http.HandleFunc("/api/reference/employees/", recoverMiddleware(authMiddleware(apiReferenceEmployeesHandler)))
 	http.HandleFunc("/api/reference/workstations", recoverMiddleware(authMiddleware(apiReferenceWorkstationsHandler)))
