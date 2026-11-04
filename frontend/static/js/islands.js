@@ -577,7 +577,30 @@ window.refreshEmployeesTable = function () {
 
 
 // ==================== Контракт АРМ (ВСЕ поля — строки) ====================
+// Опции селектов форм АРМ: GET /api/reference/addresses и
+// GET /api/reference/employees (тот же подход, что loadEmployeeAddressOptions).
+function loadWorkstationOptions() {
+    return Promise.all([
+        fetch('/api/reference/addresses').then(r => (r.ok ? r.json() : [])).catch(() => []),
+        fetch('/api/reference/employees').then(r => (r.ok ? r.json() : [])).catch(() => [])
+    ]).then(([addrs, emps]) => ({
+        // КРИТИЧНО: id приводим к String — контракт островов строковый,
+        // иначе v-model не совпадёт с опциями при предзаполнении edit-формы.
+        addressOptions: (addrs || []).map(a => ({ id: String(a.id), label: a.full_address })),
+        employeeOptions: (emps || []).map(e => ({ id: String(e.id), label: e.full_name }))
+    }));
+}
+
 const workstationFormMixin = {
+    data() {
+        return { addressOptions: [], employeeOptions: [] };
+    },
+    mounted() {
+        loadWorkstationOptions().then(o => {
+            this.addressOptions = o.addressOptions;
+            this.employeeOptions = o.employeeOptions;
+        });
+    },
     methods: {
         emptyForm() {
             return {
@@ -638,9 +661,15 @@ const WorkstationForm = {
             <div class="form-group"><label>Серийный номер</label>
                 <input type="text" v-model="formData.serial_number"></div>
             <div class="form-group"><label>Адрес *</label>
-                <input type="text" v-model="formData.address_id" placeholder="ID адреса"></div>
+                <select v-model="formData.address_id">
+                    <option value="">Выберите адрес</option>
+                    <option v-for="a in addressOptions" :key="a.id" :value="a.id">{{ a.label }}</option>
+                </select></div>
             <div class="form-group"><label>Сотрудник</label>
-                <input type="text" v-model="formData.employee_id" placeholder="ID сотрудника"></div>
+                <select v-model="formData.employee_id">
+                    <option value="">Вакантно</option>
+                    <option v-for="e in employeeOptions" :key="e.id" :value="e.id">{{ e.label }}</option>
+                </select></div>
             <div class="form-group"><label>Мониторы (1-5)</label>
                 <input type="number" v-model="formData.monitor_count" min="1" max="5"></div>
             <div class="form-group"><label>Пломбы</label>
@@ -717,9 +746,15 @@ const WorkstationEditModal = {
             <div class="form-group"><label>Серийный номер</label>
                 <input type="text" v-model="formData.serial_number"></div>
             <div class="form-group"><label>Адрес *</label>
-                <input type="text" v-model="formData.address_id"></div>
+                <select v-model="formData.address_id">
+                    <option value="">Выберите адрес</option>
+                    <option v-for="a in addressOptions" :key="a.id" :value="a.id">{{ a.label }}</option>
+                </select></div>
             <div class="form-group"><label>Сотрудник</label>
-                <input type="text" v-model="formData.employee_id"></div>
+                <select v-model="formData.employee_id">
+                    <option value="">Вакантно</option>
+                    <option v-for="e in employeeOptions" :key="e.id" :value="e.id">{{ e.label }}</option>
+                </select></div>
             <div class="form-group"><label>Мониторы (1-5)</label>
                 <input type="number" v-model="formData.monitor_count" min="1" max="5"></div>
             <div class="form-group"><label>Пломбы</label>
