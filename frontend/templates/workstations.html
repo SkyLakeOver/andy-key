@@ -62,6 +62,7 @@
                     <th>ID</th>
                     <th>Инвентарный номер</th>
                     <th>Серийный номер</th>
+                    <th>Пломбы</th>
                     <th>Адрес</th>
                     <th>Сотрудник</th>
                     <th>Мониторы</th>
@@ -76,7 +77,8 @@
                     <td>{{.id}}</td>
                     <td>{{.inventory_number}}</td>
                     <td>{{.serial_number}}</td>
-                    <td>{{.street}} {{.building}}{{if .cabinet}}, каб. {{.cabinet}}{{end}}</td>
+                    <td>{{ default "—" .seal_numbers }}</td>
+                    <td>{{if .full_address}}{{.full_address}}{{else}}—{{end}}</td>
                     <td>{{if .employee_name}}{{.employee_name}}{{else}}—{{end}}</td>
                     <td>{{.monitor_count}}</td>
                     <td>
@@ -115,7 +117,7 @@
                 </tr>
                 {{else}}
                 <tr>
-                    <td colspan="9" class="empty-state">
+                    <td colspan="10" class="empty-state">
                         {{if .Search}}
                             По запросу "{{.Search}}" ничего не найдено
                         {{else if .Vacant}}
