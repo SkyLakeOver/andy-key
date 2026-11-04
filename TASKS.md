@@ -32,6 +32,9 @@
 - Аудит Alpine: «Адреса» и «АРМ» мигрированы; сломанность остальных Alpine-разделов
   подтверждена сопоставлением app.js с API (employees: fio/position vs full_name;
   tasks: viewTask/startTask/stopTask не определены).
+- АРМ-UX (d89300d): селекты адреса/сотрудника из справочников, колонка Пломбы,
+  full_address в таблице АРМ; main.go не правился — full_address уже был
+  (workstationListSelect + FormatFullAddress).
 
 ## 3. Активная очередь сессий
 1. Порт-employees: SSR + Vue-острова по образцу адресов (контракт full_name, short_name,
@@ -42,6 +45,8 @@
 4. Демонтаж Alpine Фазы A-D (раздел 5).
 
 ## 4. Беклог
+- Сортировка старых JSON-API (/api/reference/*) по id — сейчас вне правила ключа.
+- Двойные звёздочки в label форм (Адреса, Сотрудники) — косметика.
 - Сортировка по клику на столбец (серверный ORDER BY + параметр запроса).
 - modernc.org/sqlite вместо sqlite3 CLI: 0 внешних зависимостей, транзакции, нативные
    параметризованные запросы (закрывает RECOMMENDATIONS №5 и №9); на Linux и Windows
